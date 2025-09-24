@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Infraestructura Serverless para gestión de eventos con RDS"
+
+Resources:
+
+  ### Bucket para almacenamiento de archivos ###
+  EventStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "event-storage-${AWS::AccountId}"
+
+  ### Cola SQS ###
+  EventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: "events-queue"
+
+  ### RDS Aurora Serverless v2 ###
+  EventDBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      EngineVersion: "8.0.mysql_aurora.3.03.0"
+      DBClusterIdentifier: "event-db-cluster"
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DatabaseName: eventsdb
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 2
+      DeletionProtection: false
+
+  EventDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.serverless
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref EventDBCluster
+
+  ### Lambda conectada a RDS ###
+  CreateEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "create-event"
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          DB_ENDPOINT: !GetAtt EventDBCluster.Endpoint.Address
+          DB_NAME: "eventsdb"
+          DB_USER: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+      Code:
+        ZipFile: |
+          import pymysql, os, json
+          def handler(event, context):
+              conn = pymysql.connect(
+                  host=os.environ['DB_ENDPOINT'],
+                  user=os.environ['DB_USER'],
+                  password=os.environ['DB_PASSWORD'],
+                  database=os.environ['DB_NAME']
+              )
+              with conn.cursor() as cur:
+                  cur.execute("CREATE TABLE IF NOT EXISTS events (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255))")
+                  cur.execute("INSERT INTO events (name) VALUES ('Evento de prueba')")
+                  conn.commit()
+              return {"statusCode": 200, "body": "Evento creado"}
+
+  ### Rol de ejecución para Lambda ###
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - rds:*
+                Resource: "*"
+
+  ### API Gateway ###
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: "EventsApi"
+
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: "events"
+      RestApiId: !Ref ApiGateway
+
+  ApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - { Region: !Ref AWS::Region, LambdaArn: !GetAtt CreateEventLambda.Arn }
+
+  LambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CreateEventLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+
+Parameters:
+  DBUsername:
+    Type: String
+    Default: admin
+  DBPassword:
+    Type: String
+    NoEcho: true
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/events"
+    Description: "Endpoint de la API"
+  RdsEndpoint:
+    Value: !GetAtt EventDBCluster.Endpoint.Address
+    Description: "Endpoint de la base de datos"

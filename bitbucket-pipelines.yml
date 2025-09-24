@@ -1,0 +1,12 @@
+image: amazon/aws-cli:2.15.0
+
+pipelines:
+  default:
+    - step:
+        name: Deploy Infra with CloudFormation
+        script:
+          - aws cloudformation deploy \
+              --template-file infra/template.yaml \
+              --stack-name event-system \
+              --capabilities CAPABILITY_NAMED_IAM \
+              --parameter-overrides DBUsername=admin DBPassword=$DB_PASSWORD
