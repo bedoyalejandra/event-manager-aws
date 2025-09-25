@@ -69,7 +69,7 @@ Resources:
               - s3:GetObject
               - s3:PutObject
               - s3:DeleteObject
-            Resource: !Sub "${ReportsBucket}/*"
+            Resource: !Sub "${ReportsBucket.Arn}/*"
             Condition:
               StringEquals:
                 "aws:SourceAccount": !Ref AWS::AccountId
