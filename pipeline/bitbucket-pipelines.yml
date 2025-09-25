@@ -67,21 +67,138 @@ pipelines:
   branches:
     develop:
       - step:
-          name: Deploy to Development
+          name: Build and Package Lambda Functions (Dev)
+          caches:
+            - node
+          script:
+            - export ENVIRONMENT=dev
+            - export STACK_NAME=event-manager-dev
+            - echo "Building for development environment..."
+            - echo "Installing dependencies for Lambda functions..."
+            - for dir in src/*/; do
+                if [ -f "$dir/package.json" ]; then
+                  echo "Installing dependencies in $dir"
+                  cd "$dir"
+                  npm install --production
+                  cd - > /dev/null
+                fi
+              done
+            - echo "Creating deployment package..."
+            - zip -r lambda-functions.zip src/
+          artifacts:
+            - lambda-functions.zip
+
+      - step:
+          name: Upload Lambda Code to S3 (Dev)
+          script:
+            - export ENVIRONMENT=dev
+            - export STACK_NAME=event-manager-dev
+            - echo "Uploading Lambda code to S3..."
+            - aws s3 cp lambda-functions.zip s3://$S3_LAMBDA_BUCKET/lambda-functions.zip
+            - echo "Lambda code uploaded successfully"
+
+      - step:
+          name: Deploy Infrastructure (Dev)
           deployment: development
           script:
             - export ENVIRONMENT=dev
             - export STACK_NAME=event-manager-dev
-            - echo "Deploying to development environment..."
-            # Reutilizar los mismos pasos del pipeline default
+            - echo "Validating CloudFormation template..."
+            - aws cloudformation validate-template --template-body file://infra/master-template.yml
+            - echo "Deploying CloudFormation stack to development..."
+            - aws cloudformation deploy \
+                --template-file infra/master-template.yml \
+                --stack-name $STACK_NAME \
+                --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+                --parameter-overrides \
+                  Environment=$ENVIRONMENT \
+                  DBUsername=$DB_USERNAME \
+                  S3LambdaBucket=$S3_LAMBDA_BUCKET \
+                  LambdaCodeKey=lambda-functions.zip
+            - echo "Development stack deployment completed"
+
+      - step:
+          name: Initialize Database (Dev)
+          script:
+            - export ENVIRONMENT=dev
+            - export STACK_NAME=event-manager-dev
+            - echo "Waiting for RDS to be ready..."
+            - sleep 120
+            - echo "Invoking InitDB Lambda function..."
+            - aws lambda invoke \
+                --function-name ${STACK_NAME}-InitDBLambda \
+                --payload '{}' \
+                response.json
+            - echo "InitDB response:"
+            - cat response.json
+            - echo "Development database initialization completed"
 
     main:
       - step:
-          name: Deploy to Production
+          name: Build and Package Lambda Functions (Prod)
+          caches:
+            - node
+          script:
+            - export ENVIRONMENT=prod
+            - export STACK_NAME=event-manager-prod
+            - echo "Building for production environment..."
+            - echo "Installing dependencies for Lambda functions..."
+            - for dir in src/*/; do
+                if [ -f "$dir/package.json" ]; then
+                  echo "Installing dependencies in $dir"
+                  cd "$dir"
+                  npm install --production
+                  cd - > /dev/null
+                fi
+              done
+            - echo "Creating deployment package..."
+            - zip -r lambda-functions.zip src/
+          artifacts:
+            - lambda-functions.zip
+
+      - step:
+          name: Upload Lambda Code to S3 (Prod)
+          script:
+            - export ENVIRONMENT=prod
+            - export STACK_NAME=event-manager-prod
+            - echo "Uploading Lambda code to S3..."
+            - aws s3 cp lambda-functions.zip s3://$S3_LAMBDA_BUCKET/lambda-functions.zip
+            - echo "Lambda code uploaded successfully"
+
+      - step:
+          name: Deploy Infrastructure (Prod)
           deployment: production
           trigger: manual
           script:
             - export ENVIRONMENT=prod
             - export STACK_NAME=event-manager-prod
-            - echo "Deploying to production environment..."
-            # Reutilizar los mismos pasos del pipeline default
+            - echo "Validating CloudFormation template..."
+            - aws cloudformation validate-template --template-body file://infra/master-template.yml
+            - echo "Deploying CloudFormation stack to production..."
+            - aws cloudformation deploy \
+                --template-file infra/master-template.yml \
+                --stack-name $STACK_NAME \
+                --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+                --parameter-overrides \
+                  Environment=$ENVIRONMENT \
+                  DBUsername=$DB_USERNAME \
+                  S3LambdaBucket=$S3_LAMBDA_BUCKET \
+                  LambdaCodeKey=lambda-functions.zip
+            - echo "Production stack deployment completed"
+
+      - step:
+          name: Initialize Database (Prod)
+          trigger: manual
+          script:
+            - export ENVIRONMENT=prod
+            - export STACK_NAME=event-manager-prod
+            - echo "Waiting for RDS to be ready..."
+            - sleep 120
+            - echo "Invoking InitDB Lambda function..."
+            - aws lambda invoke \
+                --function-name ${STACK_NAME}-InitDBLambda \
+                --payload '{}' \
+                response.json
+            - echo "InitDB response:"
+            - cat response.json
+            - echo "Production database initialization completed"
