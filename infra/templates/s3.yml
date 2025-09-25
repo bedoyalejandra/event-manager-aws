@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 Buckets para Event Manager App
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name
+
+Resources:
+  # ===========================================
+  # Bucket para código Lambda (automático)
+  # ===========================================
+  LambdaCodeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "event-manager-lambda-code-${Environment}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  # ===========================================
+  # Bucket para almacenar reportes generados
+  # ===========================================
+  ReportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "event-manager-reports-${Environment}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldReports
+            Status: Enabled
+            ExpirationInDays: 90  # Eliminar reportes después de 90 días
+
+  # ===========================================
+  # Política para acceso de Lambda Functions
+  # ===========================================
+  ReportsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ReportsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowLambdaAccess
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub "${ReportsBucket}/*"
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+
+Outputs:
+  LambdaCodeBucketName:
+    Description: Nombre del bucket para código Lambda
+    Value: !Ref LambdaCodeBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaCodeBucketName"
+
+  LambdaCodeBucketArn:
+    Description: ARN del bucket para código Lambda
+    Value: !GetAtt LambdaCodeBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaCodeBucketArn"
+
+  ReportsBucketName:
+    Description: Nombre del bucket para reportes
+    Value: !Ref ReportsBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-ReportsBucketName"
+
+  ReportsBucketArn:
+    Description: ARN del bucket para reportes
+    Value: !GetAtt ReportsBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ReportsBucketArn"

@@ -85,16 +85,26 @@ event-manager-aws/
 ### Despliegue Manual
 
 ```bash
-# 1. Crear bucket para código Lambda
-aws s3 mb s3://tu-bucket-lambda-code --region us-east-1
-
-# 2. Empaquetar funciones Lambda
+# 1. Empaquetar funciones Lambda
 zip -r lambda-functions.zip src/
 
-# 3. Subir código a S3
-aws s3 cp lambda-functions.zip s3://tu-bucket-lambda-code/
+# 2. Crear buckets S3 automáticamente
+aws cloudformation deploy \
+  --template-file infra/templates/s3.yml \
+  --stack-name event-manager-s3 \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides Environment=dev
 
-# 4. Desplegar infraestructura
+# 3. Obtener nombre del bucket creado automáticamente
+export LAMBDA_BUCKET=$(aws cloudformation describe-stacks \
+  --stack-name event-manager-s3 \
+  --query 'Stacks[0].Outputs[?OutputKey==`LambdaCodeBucketName`].OutputValue' \
+  --output text)
+
+# 4. Subir código al bucket creado automáticamente
+aws s3 cp lambda-functions.zip s3://$LAMBDA_BUCKET/lambda-functions.zip
+
+# 5. Desplegar infraestructura principal
 aws cloudformation deploy \
   --template-file infra/master-template.yml \
   --stack-name event-manager \
@@ -102,10 +112,13 @@ aws cloudformation deploy \
   --parameter-overrides \
     Environment=dev \
     DBUsername=event_admin \
-    S3LambdaBucket=tu-bucket-lambda-code \
+    S3LambdaBucket=$LAMBDA_BUCKET \
     LambdaCodeKey=lambda-functions.zip
 
-# Nota: No necesitas especificar DBPassword porque se genera automáticamente
+# 🎉 TODO ES AUTOMÁTICO:
+# - Buckets S3 (código Lambda + reportes)
+# - Contraseña de base de datos (Secrets Manager)
+# - VPC, RDS, Cognito, API Gateway, etc.
 ```
 
 ### Despliegue Automático con Bitbucket
@@ -127,11 +140,10 @@ Ve a **Repository settings** > **Pipelines** > **Repository variables** y config
 | `AWS_SECRET_ACCESS_KEY` | Secret Key de AWS | `...` | ✅ Sí |
 | `AWS_DEFAULT_REGION` | Región de AWS | `us-east-1` | No |
 | `DB_USERNAME` | Usuario de la base de datos | `event_admin` | No |
-| `S3_LAMBDA_BUCKET` | Bucket S3 para código Lambda | `event-manager-lambda-code` | No |
 | `STACK_NAME` | Nombre del stack CloudFormation | `event-manager` | No |
 | `ENVIRONMENT` | Entorno (dev/prod) | `dev` | No |
 
-> **📝 Nota Importante**: No necesitas configurar `DB_PASSWORD` porque se genera automáticamente en **AWS Secrets Manager** durante el despliegue.
+> **🎉 Todo Automático**: No necesitas configurar `DB_PASSWORD` ni `S3_LAMBDA_BUCKET` porque se crean automáticamente durante el despliegue.
 
 #### 3. Credenciales AWS
 
@@ -230,10 +242,17 @@ Las funciones Lambda reciben automáticamente:
 - `DB_NAME`: Nombre de la base de datos
 - `DB_ENDPOINT`: Endpoint del cluster Aurora
 
-#### 4. **Buckets S3 Automáticos**
-Los buckets S3 se crean automáticamente y sus nombres se pasan como variables de entorno:
-- `REPORTS_BUCKET`: Para almacenar reportes generados
-- `LAMBDA_CODE_BUCKET`: Para el código de las funciones
+#### 4. **Buckets S3 - Dos Tipos Diferentes**
+
+**Bucket para Código Lambda (Manual - Pre-requisito):**
+- `S3_LAMBDA_BUCKET`: Debes crearlo ANTES del despliegue
+- Contiene el código empaquetado de las funciones Lambda
+- Se especifica como variable de entorno porque CloudFormation lo necesita para desplegar
+
+**Bucket para Reportes (Automático - Creado por YAML):**
+- `REPORTS_BUCKET`: Se crea automáticamente por el template S3
+- Usado por las funciones Lambda para almacenar reportes generados
+- Se pasa como variable de entorno a las funciones Lambda
 
 ### Obtener Credenciales Manualmente (Si Necesario)
 

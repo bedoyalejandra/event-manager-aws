@@ -27,18 +27,41 @@ pipelines:
           - lambda-functions.zip
 
     - step:
-        name: Upload Lambda Code to S3
+        name: Deploy S3 Buckets First
         script:
-          - echo "Uploading Lambda code to S3..."
-          - aws s3 cp lambda-functions.zip s3://$S3_LAMBDA_BUCKET/lambda-functions.zip
-          - echo "Lambda code uploaded successfully"
+          - echo "Deploying S3 buckets first..."
+          - aws cloudformation deploy \
+              --template-file infra/templates/s3.yml \
+              --stack-name ${STACK_NAME}-s3 \
+              --capabilities CAPABILITY_IAM \
+              --parameter-overrides \
+                Environment=$ENVIRONMENT
+          - echo "S3 buckets created successfully"
 
     - step:
-        name: Deploy Infrastructure with CloudFormation
+        name: Upload Lambda Code to Auto-Created S3
         script:
+          - echo "Getting bucket name from CloudFormation..."
+          - export LAMBDA_BUCKET=$(aws cloudformation describe-stacks \
+              --stack-name ${STACK_NAME}-s3 \
+              --query 'Stacks[0].Outputs[?OutputKey==`LambdaCodeBucketName`].OutputValue' \
+              --output text)
+          - echo "Lambda bucket: $LAMBDA_BUCKET"
+          - echo "Uploading Lambda code to auto-created S3 bucket..."
+          - aws s3 cp lambda-functions.zip s3://$LAMBDA_BUCKET/lambda-functions.zip
+          - echo "Lambda code uploaded successfully to $LAMBDA_BUCKET"
+
+    - step:
+        name: Deploy Main Infrastructure
+        script:
+          - echo "Getting bucket name from CloudFormation..."
+          - export LAMBDA_BUCKET=$(aws cloudformation describe-stacks \
+              --stack-name ${STACK_NAME}-s3 \
+              --query 'Stacks[0].Outputs[?OutputKey==`LambdaCodeBucketName`].OutputValue' \
+              --output text)
           - echo "Validating CloudFormation template..."
           - aws cloudformation validate-template --template-body file://infra/master-template.yml
-          - echo "Deploying CloudFormation stack..."
+          - echo "Deploying main infrastructure stack..."
           - aws cloudformation deploy \
               --template-file infra/master-template.yml \
               --stack-name $STACK_NAME \
@@ -46,9 +69,9 @@ pipelines:
               --parameter-overrides \
                 Environment=$ENVIRONMENT \
                 DBUsername=$DB_USERNAME \
-                S3LambdaBucket=$S3_LAMBDA_BUCKET \
+                S3LambdaBucket=$LAMBDA_BUCKET \
                 LambdaCodeKey=lambda-functions.zip
-          - echo "Stack deployment completed"
+          - echo "Main infrastructure deployment completed"
 
     - step:
         name: Initialize Database
@@ -89,13 +112,33 @@ pipelines:
             - lambda-functions.zip
 
       - step:
-          name: Upload Lambda Code to S3 (Dev)
+          name: Deploy S3 Buckets First (Dev)
           script:
             - export ENVIRONMENT=dev
             - export STACK_NAME=event-manager-dev
-            - echo "Uploading Lambda code to S3..."
-            - aws s3 cp lambda-functions.zip s3://$S3_LAMBDA_BUCKET/lambda-functions.zip
-            - echo "Lambda code uploaded successfully"
+            - echo "Deploying S3 buckets first..."
+            - aws cloudformation deploy \
+                --template-file infra/templates/s3.yml \
+                --stack-name ${STACK_NAME}-s3 \
+                --capabilities CAPABILITY_IAM \
+                --parameter-overrides \
+                  Environment=$ENVIRONMENT
+            - echo "S3 buckets created successfully"
+
+      - step:
+          name: Upload Lambda Code to Auto-Created S3 (Dev)
+          script:
+            - export ENVIRONMENT=dev
+            - export STACK_NAME=event-manager-dev
+            - echo "Getting bucket name from CloudFormation..."
+            - export LAMBDA_BUCKET=$(aws cloudformation describe-stacks \
+                --stack-name ${STACK_NAME}-s3 \
+                --query 'Stacks[0].Outputs[?OutputKey==`LambdaCodeBucketName`].OutputValue' \
+                --output text)
+            - echo "Lambda bucket: $LAMBDA_BUCKET"
+            - echo "Uploading Lambda code to auto-created S3 bucket..."
+            - aws s3 cp lambda-functions.zip s3://$LAMBDA_BUCKET/lambda-functions.zip
+            - echo "Lambda code uploaded successfully to $LAMBDA_BUCKET"
 
       - step:
           name: Deploy Infrastructure (Dev)
@@ -103,6 +146,11 @@ pipelines:
           script:
             - export ENVIRONMENT=dev
             - export STACK_NAME=event-manager-dev
+            - echo "Getting bucket name from CloudFormation..."
+            - export LAMBDA_BUCKET=$(aws cloudformation describe-stacks \
+                --stack-name ${STACK_NAME}-s3 \
+                --query 'Stacks[0].Outputs[?OutputKey==`LambdaCodeBucketName`].OutputValue' \
+                --output text)
             - echo "Validating CloudFormation template..."
             - aws cloudformation validate-template --template-body file://infra/master-template.yml
             - echo "Deploying CloudFormation stack to development..."
@@ -113,7 +161,7 @@ pipelines:
                 --parameter-overrides \
                   Environment=$ENVIRONMENT \
                   DBUsername=$DB_USERNAME \
-                  S3LambdaBucket=$S3_LAMBDA_BUCKET \
+                  S3LambdaBucket=$LAMBDA_BUCKET \
                   LambdaCodeKey=lambda-functions.zip
             - echo "Development stack deployment completed"
 

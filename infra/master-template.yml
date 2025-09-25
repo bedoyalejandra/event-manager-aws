@@ -13,14 +13,14 @@ Parameters:
     Default: event_admin
     Description: Database username
   
-  S3LambdaBucket:
-    Type: String
-    Description: S3 bucket containing Lambda code
-  
   LambdaCodeKey:
     Type: String
     Default: lambda-functions.zip
     Description: S3 key for Lambda code package
+  
+  S3LambdaBucket:
+    Type: String
+    Description: S3 bucket containing Lambda code (created automatically)
 
 Resources:
   # ===========================================
