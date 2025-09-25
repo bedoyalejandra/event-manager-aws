@@ -1,5 +1,16 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Event Manager App - Master Stack
+Description: Event Management App - Master Stack
+
+Parameters:
+  DBUsername:
+    Type: String
+  DBPassword:
+    Type: String
+    NoEcho: true
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
 
 Resources:
   VPCStack:
@@ -11,31 +22,49 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./templates/rds.yml
+      Parameters:
+        DBUsername: !Ref DBUsername
+        DBPassword: !Ref DBPassword
+        VpcId: !Ref VpcId
+        SubnetIds: !Ref SubnetIds
+
+  InitDBStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/initdb.yml
+      Parameters:
+        VpcId: !Ref VpcId
+        SubnetIds: !Ref SubnetIds
+        RDSSecretArn: !GetAtt RDSStack.Outputs.RDSSecretArn
+        RDSClusterEndpoint: !GetAtt RDSStack.Outputs.RDSClusterEndpoint
+        SecurityGroupId: !GetAtt RDSStack.Outputs.RDSSecurityGroupId
+        LambdaCodeBucket: your-code-bucket
+        LambdaCodeKey: initdb.zip
+
+  LambdasStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/lambdas.yml
+
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/apigateway.yml
 
   CognitoStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./templates/cognito.yml
 
-  LambdaStack:
+  SQSSesStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: ./templates/lambdas.yml
-
-  ApiStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./templates/apigateway.yml
+      TemplateURL: ./templates/sqs-ses.yml
 
   S3Stack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./templates/s3.yml
-
-  SqsSesStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./templates/sqs-ses.yml
 
   StepFunctionsStack:
     Type: AWS::CloudFormation::Stack

@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Lambda para crear eventos en Event Manager DB
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  RDSSecretArn:
+    Type: String  # Credenciales en Secrets Manager
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  LambdaCodeBucket:
+    Type: String
+  LambdaCodeKey:
+    Type: String
+
+Resources:
+  CreateEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: CreateEventLambda
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 10
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CreateEventLambdaRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+        - arn:aws:iam::aws:policy/AmazonRDSFullAccess

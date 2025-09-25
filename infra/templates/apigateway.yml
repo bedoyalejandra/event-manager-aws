@@ -1,0 +1,22 @@
+Resources:
+  CreateEventApi:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: events
+      RestApiId: !Ref ApiGateway
+
+  CreateEventMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref CreateEventApi
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: 
+          Fn::Sub: 
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateEventLambda.Arn}/invocations

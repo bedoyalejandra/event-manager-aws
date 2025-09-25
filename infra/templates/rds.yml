@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Aurora Serverless v2 para Event Manager App
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC donde se desplegará Aurora
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets privadas para Aurora
+  DBUsername:
+    Type: String
+    Default: event_admin
+    Description: Nombre de usuario de la DB
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Contraseña de la DB (se usará solo si no se genera en Secrets Manager)
+
+Resources:
+  ############################################
+  # Security Group para Aurora
+  ############################################
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group para Aurora Serverless
+      VpcId: !Ref VpcId
+
+  ############################################
+  # Subnet Group para Aurora
+  ############################################
+  EventDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group para Aurora
+      SubnetIds: !Ref SubnetIds
+
+  ############################################
+  # Secret en Secrets Manager
+  ############################################
+  DBCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: event-app/db-credentials
+      Description: Credenciales para Aurora EventManagerDB
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username":"${DBUsername}"}'
+        GenerateStringKey: password
+        PasswordLength: 30
+        ExcludePunctuation: true
+
+  ############################################
+  # Aurora Serverless Cluster
+  ############################################
+  EventDBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      EngineMode: provisioned
+      DatabaseName: EventManagerDB
+      MasterUsername: !Sub "{{resolve:secretsmanager:${DBCredentialsSecret}::username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DBCredentialsSecret}::password}}"
+      DBSubnetGroupName: !Ref EventDBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RDSSecurityGroup
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 2
+
+Outputs:
+  RDSSecretArn:
+    Description: ARN del secreto con las credenciales de Aurora
+    Value: !Ref DBCredentialsSecret
+    Export:
+      Name: EventApp-RDSSecretArn
+
+  RDSClusterEndpoint:
+    Description: Endpoint del cluster Aurora
+    Value: !GetAtt EventDBCluster.Endpoint.Address
+    Export:
+      Name: EventApp-RDSClusterEndpoint
+
+  RDSSecurityGroupId:
+    Description: ID del Security Group de Aurora
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: EventApp-RDSSecurityGroupId
