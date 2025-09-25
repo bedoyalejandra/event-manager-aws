@@ -1,0 +1,268 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Step Functions State Machines for Event Manager App
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name (dev or prod)
+  
+  GenerateReportLambdaArn:
+    Type: String
+    Description: ARN of the Generate Report Lambda function
+  
+  ProcessReportDataLambdaArn:
+    Type: String
+    Description: ARN of the Process Report Data Lambda function
+
+Resources:
+  # ===========================================
+  # IAM Role for Step Functions
+  # ===========================================
+  StepFunctionsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'event-manager-stepfunctions-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StepFunctionsExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Ref GenerateReportLambdaArn
+                  - !Ref ProcessReportDataLambdaArn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: '*'
+
+  # ===========================================
+  # CloudWatch Log Group for Step Functions
+  # ===========================================
+  StepFunctionsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/stepfunctions/event-manager-${Environment}'
+      RetentionInDays: 14
+
+  # ===========================================
+  # Report Generation State Machine
+  # ===========================================
+  ReportGenerationStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub 'event-manager-report-generation-${Environment}'
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StepFunctionsLogGroup.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Report Generation Workflow for Event Manager",
+          "StartAt": "ProcessReportData",
+          "States": {
+            "ProcessReportData": {
+              "Type": "Task",
+              "Resource": "${ProcessReportDataLambdaArn}",
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.TaskFailed"],
+                  "Next": "ProcessDataFailed",
+                  "ResultPath": "$.error"
+                }
+              ],
+              "Next": "GenerateReport"
+            },
+            "GenerateReport": {
+              "Type": "Task",
+              "Resource": "${GenerateReportLambdaArn}",
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.TaskFailed"],
+                  "Next": "ReportGenerationFailed",
+                  "ResultPath": "$.error"
+                }
+              ],
+              "Next": "ReportGenerationSuccess"
+            },
+            "ReportGenerationSuccess": {
+              "Type": "Succeed",
+              "Comment": "Report generation completed successfully"
+            },
+            "ProcessDataFailed": {
+              "Type": "Fail",
+              "Comment": "Failed to process report data",
+              "Cause": "Data processing step failed"
+            },
+            "ReportGenerationFailed": {
+              "Type": "Fail",
+              "Comment": "Failed to generate report",
+              "Cause": "Report generation step failed"
+            }
+          }
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+  # ===========================================
+  # Event Processing State Machine
+  # ===========================================
+  EventProcessingStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub 'event-manager-event-processing-${Environment}'
+      StateMachineType: EXPRESS
+      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
+      LoggingConfiguration:
+        Level: ERROR
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StepFunctionsLogGroup.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Event Processing Workflow for Event Manager",
+          "StartAt": "ValidateEvent",
+          "States": {
+            "ValidateEvent": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.eventType",
+                  "StringEquals": "CREATE",
+                  "Next": "ProcessCreateEvent"
+                },
+                {
+                  "Variable": "$.eventType",
+                  "StringEquals": "UPDATE",
+                  "Next": "ProcessUpdateEvent"
+                },
+                {
+                  "Variable": "$.eventType",
+                  "StringEquals": "DELETE",
+                  "Next": "ProcessDeleteEvent"
+                }
+              ],
+              "Default": "InvalidEventType"
+            },
+            "ProcessCreateEvent": {
+              "Type": "Pass",
+              "Comment": "Process event creation",
+              "Result": {
+                "status": "processed",
+                "action": "create"
+              },
+              "Next": "EventProcessed"
+            },
+            "ProcessUpdateEvent": {
+              "Type": "Pass",
+              "Comment": "Process event update",
+              "Result": {
+                "status": "processed",
+                "action": "update"
+              },
+              "Next": "EventProcessed"
+            },
+            "ProcessDeleteEvent": {
+              "Type": "Pass",
+              "Comment": "Process event deletion",
+              "Result": {
+                "status": "processed",
+                "action": "delete"
+              },
+              "Next": "EventProcessed"
+            },
+            "EventProcessed": {
+              "Type": "Succeed",
+              "Comment": "Event processed successfully"
+            },
+            "InvalidEventType": {
+              "Type": "Fail",
+              "Comment": "Invalid event type provided",
+              "Cause": "Event type must be CREATE, UPDATE, or DELETE"
+            }
+          }
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+# ===========================================
+# Outputs
+# ===========================================
+Outputs:
+  ReportGenerationStateMachineArn:
+    Description: ARN of the Report Generation State Machine
+    Value: !Ref ReportGenerationStateMachine
+    Export:
+      Name: !Sub '${AWS::StackName}-ReportGenerationStateMachineArn'
+
+  ReportGenerationStateMachineName:
+    Description: Name of the Report Generation State Machine
+    Value: !Ref ReportGenerationStateMachine
+    Export:
+      Name: !Sub '${AWS::StackName}-ReportGenerationStateMachineName'
+
+  EventProcessingStateMachineArn:
+    Description: ARN of the Event Processing State Machine
+    Value: !Ref EventProcessingStateMachine
+    Export:
+      Name: !Sub '${AWS::StackName}-EventProcessingStateMachineArn'
+
+  EventProcessingStateMachineName:
+    Description: Name of the Event Processing State Machine
+    Value: !Ref EventProcessingStateMachine
+    Export:
+      Name: !Sub '${AWS::StackName}-EventProcessingStateMachineName'
+
+  StepFunctionsExecutionRoleArn:
+    Description: ARN of the Step Functions Execution Role
+    Value: !GetAtt StepFunctionsExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-StepFunctionsExecutionRoleArn'
