@@ -16,6 +16,11 @@ Parameters:
     Type: String
   LambdaCodeKey:
     Type: String
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name
 
 Resources:
   InitDBLambda:

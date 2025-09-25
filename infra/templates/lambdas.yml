@@ -14,6 +14,17 @@ Parameters:
     Type: String
   LambdaCodeKey:
     Type: String
+  ReportsBucket:
+    Type: String
+    Description: S3 bucket for storing reports
+  EmailQueue:
+    Type: String
+    Description: SQS queue URL for email processing
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name
 
 Resources:
   CreateEventLambda:

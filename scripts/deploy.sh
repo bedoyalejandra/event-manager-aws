@@ -69,12 +69,39 @@ log_success "Archivo lambda-functions.zip creado (Tamaño: $LAMBDA_ZIP_SIZE)"
 # PASO 3: Crear bucket S3 para código Lambda
 show_progress 3 10 "Creando Bucket S3 para Código Lambda"
 
+# Verificar si los buckets ya existen
+LAMBDA_BUCKET_NAME="event-manager-lambda-code-$ENVIRONMENT-$(aws sts get-caller-identity --query Account --output text)"
+REPORTS_BUCKET_NAME="event-manager-reports-$ENVIRONMENT-$(aws sts get-caller-identity --query Account --output text)"
+
+log_info "Verificando si los buckets S3 ya existen..."
+if aws s3api head-bucket --bucket "$LAMBDA_BUCKET_NAME" 2>/dev/null; then
+    log_warning "Bucket Lambda ya existe: $LAMBDA_BUCKET_NAME"
+    USE_EXISTING_BUCKETS="true"
+else
+    log_info "Bucket Lambda no existe, se creará: $LAMBDA_BUCKET_NAME"
+    USE_EXISTING_BUCKETS="false"
+fi
+
 log_info "Desplegando template S3..."
-aws cloudformation deploy \
-    --template-file infra/templates/s3.yml \
-    --stack-name event-manager-s3 \
-    --capabilities CAPABILITY_IAM \
-    --parameter-overrides Environment=$ENVIRONMENT
+if [[ "$USE_EXISTING_BUCKETS" == "true" ]]; then
+    log_info "Usando buckets existentes..."
+    aws cloudformation deploy \
+        --template-file infra/templates/s3.yml \
+        --stack-name event-manager-s3 \
+        --capabilities CAPABILITY_IAM \
+        --parameter-overrides \
+            Environment=$ENVIRONMENT \
+            CreateS3Buckets=false \
+            ExistingLambdaCodeBucket=$LAMBDA_BUCKET_NAME \
+            ExistingReportsBucket=$REPORTS_BUCKET_NAME
+else
+    log_info "Creando nuevos buckets..."
+    aws cloudformation deploy \
+        --template-file infra/templates/s3.yml \
+        --stack-name event-manager-s3 \
+        --capabilities CAPABILITY_IAM \
+        --parameter-overrides Environment=$ENVIRONMENT
+fi
 
 log_success "Stack event-manager-s3 desplegado correctamente"
 
@@ -85,8 +112,8 @@ log_info "Obteniendo nombre del bucket Lambda..."
 LAMBDA_BUCKET=$(get_stack_output event-manager-s3 LambdaCodeBucketName)
 
 if [[ -z "$LAMBDA_BUCKET" ]]; then
-    log_error "No se pudo obtener el nombre del bucket Lambda"
-    exit 1
+    log_warning "No se pudo obtener el nombre del bucket desde el stack, usando el nombre determinado anteriormente"
+    LAMBDA_BUCKET=$LAMBDA_BUCKET_NAME
 fi
 
 log_success "Bucket Lambda obtenido: $LAMBDA_BUCKET"
@@ -135,7 +162,7 @@ aws cloudformation deploy \
         LambdaCodeKey=lambda-functions.zip \
         CreateS3Buckets=false \
         ExistingLambdaCodeBucket=$LAMBDA_BUCKET \
-        ExistingReportsBucket=event-manager-reports-$ENVIRONMENT-$(aws sts get-caller-identity --query Account --output text) \
+        ExistingReportsBucket=$REPORTS_BUCKET_NAME \
         CreateSESResources=false \
         ExistingSESConfigurationSet=event-manager-config-set-$ENVIRONMENT
 
