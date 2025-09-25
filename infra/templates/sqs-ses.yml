@@ -1,0 +1,265 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SQS Queues and SES Configuration for Event Manager App
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name (dev or prod)
+
+Resources:
+  # ===========================================
+  # SQS Queue for Email Processing
+  # ===========================================
+  EmailQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'event-manager-email-queue-${Environment}'
+      VisibilityTimeoutSeconds: 300
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EmailDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+  # ===========================================
+  # Dead Letter Queue for Failed Email Processing
+  # ===========================================
+  EmailDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'event-manager-email-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+  # ===========================================
+  # SQS Queue for Report Generation
+  # ===========================================
+  ReportQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'event-manager-report-queue-${Environment}'
+      VisibilityTimeoutSeconds: 900  # 15 minutes for report processing
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ReportDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+  # ===========================================
+  # Dead Letter Queue for Failed Report Processing
+  # ===========================================
+  ReportDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'event-manager-report-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+  # ===========================================
+  # SQS Queue for Event Notifications
+  # ===========================================
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'event-manager-notification-queue-${Environment}'
+      VisibilityTimeoutSeconds: 300
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotificationDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+  # ===========================================
+  # Dead Letter Queue for Failed Notifications
+  # ===========================================
+  NotificationDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'event-manager-notification-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: event-manager
+
+  # ===========================================
+  # SES Configuration Set
+  # ===========================================
+  SESConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      Name: !Sub 'event-manager-config-set-${Environment}'
+
+  # ===========================================
+  # SES Event Destination for Bounce/Complaint Tracking
+  # ===========================================
+  SESEventDestination:
+    Type: AWS::SES::ConfigurationSetEventDestination
+    Properties:
+      ConfigurationSetName: !Ref SESConfigurationSet
+      EventDestination:
+        Name: !Sub 'event-manager-event-destination-${Environment}'
+        Enabled: true
+        MatchingEventTypes:
+          - send
+          - bounce
+          - complaint
+          - delivery
+        CloudWatchDestination:
+          DimensionConfigurations:
+            - DimensionName: MessageTag
+              DimensionValueSource: messageTag
+              DefaultDimensionValue: default
+            - DimensionName: EmailAddress
+              DimensionValueSource: emailAddress
+              DefaultDimensionValue: default
+
+  # ===========================================
+  # IAM Role for SQS Access
+  # ===========================================
+  SQSAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'event-manager-sqs-access-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SQSAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource:
+                  - !GetAtt EmailQueue.Arn
+                  - !GetAtt ReportQueue.Arn
+                  - !GetAtt NotificationQueue.Arn
+                  - !GetAtt EmailDeadLetterQueue.Arn
+                  - !GetAtt ReportDeadLetterQueue.Arn
+                  - !GetAtt NotificationDeadLetterQueue.Arn
+
+  # ===========================================
+  # IAM Role for SES Access
+  # ===========================================
+  SESAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'event-manager-ses-access-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SESAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                  - ses:SendTemplatedEmail
+                  - ses:GetSendQuota
+                  - ses:GetSendStatistics
+                Resource: '*'
+
+# ===========================================
+# Outputs
+# ===========================================
+Outputs:
+  EmailQueueUrl:
+    Description: URL of the Email SQS Queue
+    Value: !Ref EmailQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-EmailQueueUrl'
+
+  EmailQueueArn:
+    Description: ARN of the Email SQS Queue
+    Value: !GetAtt EmailQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EmailQueueArn'
+
+  ReportQueueUrl:
+    Description: URL of the Report SQS Queue
+    Value: !Ref ReportQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-ReportQueueUrl'
+
+  ReportQueueArn:
+    Description: ARN of the Report SQS Queue
+    Value: !GetAtt ReportQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ReportQueueArn'
+
+  NotificationQueueUrl:
+    Description: URL of the Notification SQS Queue
+    Value: !Ref NotificationQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationQueueUrl'
+
+  NotificationQueueArn:
+    Description: ARN of the Notification SQS Queue
+    Value: !GetAtt NotificationQueue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationQueueArn'
+
+  SESConfigurationSetName:
+    Description: Name of the SES Configuration Set
+    Value: !Ref SESConfigurationSet
+    Export:
+      Name: !Sub '${AWS::StackName}-SESConfigurationSetName'
+
+  SQSAccessRoleArn:
+    Description: ARN of the SQS Access Role
+    Value: !GetAtt SQSAccessRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SQSAccessRoleArn'
+
+  SESAccessRoleArn:
+    Description: ARN of the SES Access Role
+    Value: !GetAtt SESAccessRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SESAccessRoleArn'
