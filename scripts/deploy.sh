@@ -44,7 +44,7 @@ if [[ -n "$EXISTING_STACKS" ]]; then
 fi
 
 # PASO 1: Preparar el entorno
-show_progress 1 9 "Preparando el Entorno"
+show_progress 1 10 "Preparando el Entorno"
 
 log_info "Configurando variables de entorno..."
 export AWS_DEFAULT_REGION=$AWS_CURRENT_REGION
@@ -54,7 +54,7 @@ export DB_USERNAME=$DB_USERNAME
 log_success "Variables de entorno configuradas"
 
 # PASO 2: Empaquetar funciones Lambda
-show_progress 2 9 "Empaquetando Funciones Lambda"
+show_progress 2 10 "Empaquetando Funciones Lambda"
 
 log_info "Creando archivo ZIP con funciones Lambda..."
 if [[ -f "lambda-functions.zip" ]]; then
@@ -67,7 +67,7 @@ LAMBDA_ZIP_SIZE=$(ls -lh lambda-functions.zip | awk '{print $5}')
 log_success "Archivo lambda-functions.zip creado (Tamaño: $LAMBDA_ZIP_SIZE)"
 
 # PASO 3: Crear bucket S3 para código Lambda
-show_progress 3 9 "Creando Bucket S3 para Código Lambda"
+show_progress 3 10 "Creando Bucket S3 para Código Lambda"
 
 log_info "Desplegando template S3..."
 aws cloudformation deploy \
@@ -79,7 +79,7 @@ aws cloudformation deploy \
 log_success "Stack event-manager-s3 desplegado correctamente"
 
 # PASO 4: Obtener nombre del bucket creado
-show_progress 4 9 "Obteniendo Información del Bucket S3"
+show_progress 4 10 "Obteniendo Información del Bucket S3"
 
 log_info "Obteniendo nombre del bucket Lambda..."
 LAMBDA_BUCKET=$(get_stack_output event-manager-s3 LambdaCodeBucketName)
@@ -92,7 +92,7 @@ fi
 log_success "Bucket Lambda obtenido: $LAMBDA_BUCKET"
 
 # PASO 5: Subir código Lambda al bucket
-show_progress 5 9 "Subiendo Código Lambda al Bucket"
+show_progress 5 10 "Subiendo Código Lambda al Bucket"
 
 log_info "Subiendo lambda-functions.zip al bucket S3..."
 aws s3 cp lambda-functions.zip s3://$LAMBDA_BUCKET/lambda-functions.zip
@@ -102,13 +102,24 @@ aws s3 ls s3://$LAMBDA_BUCKET/lambda-functions.zip
 
 log_success "Código Lambda subido correctamente"
 
-# PASO 6: Validar template principal
-show_progress 6 9 "Validando Template Principal"
+# PASO 6: Subir templates de nested stacks a S3
+show_progress 6 10 "Subiendo Templates de Nested Stacks"
+
+log_info "Subiendo templates de nested stacks al bucket S3..."
+aws s3 cp infra/templates/ s3://$LAMBDA_BUCKET/templates/ --recursive --exclude "*.md"
+
+log_info "Verificando que los templates se subieron correctamente..."
+aws s3 ls s3://$LAMBDA_BUCKET/templates/
+
+log_success "Templates de nested stacks subidos correctamente"
+
+# PASO 7: Validar template principal
+show_progress 7 10 "Validando Template Principal"
 
 validate_template infra/master-template.yml || exit 1
 
-# PASO 7: Desplegar infraestructura principal
-show_progress 7 9 "Desplegando Infraestructura Principal"
+# PASO 8: Desplegar infraestructura principal
+show_progress 8 10 "Desplegando Infraestructura Principal"
 
 log_warning "Este paso puede tomar 15-20 minutos. Por favor, sé paciente..."
 log_info "Desplegando stack principal con todos los servicios..."
@@ -121,12 +132,15 @@ aws cloudformation deploy \
         Environment=$ENVIRONMENT \
         DBUsername=$DB_USERNAME \
         S3LambdaBucket=$LAMBDA_BUCKET \
-        LambdaCodeKey=lambda-functions.zip
+        LambdaCodeKey=lambda-functions.zip \
+        CreateS3Buckets=false \
+        ExistingLambdaCodeBucket=$LAMBDA_BUCKET \
+        ExistingReportsBucket=event-manager-reports-$ENVIRONMENT-$(aws sts get-caller-identity --query Account --output text)
 
 log_success "Stack principal desplegado correctamente"
 
-# PASO 8: Verificar el despliegue
-show_progress 8 9 "Verificando el Despliegue"
+# PASO 9: Verificar el despliegue
+show_progress 9 10 "Verificando el Despliegue"
 
 log_info "Verificando estado del stack principal..."
 aws cloudformation describe-stacks --stack-name event-manager --query 'Stacks[0].StackStatus' --output text
@@ -142,8 +156,8 @@ log_info "Listando todos los stacks creados..."
 show_header "STACKS CREADOS" $YELLOW
 list_event_manager_stacks
 
-# PASO 9: Verificar funciones Lambda
-show_progress 9 9 "Verificando Funciones Lambda"
+# PASO 10: Verificar funciones Lambda
+show_progress 10 10 "Verificando Funciones Lambda"
 
 log_info "Listando funciones Lambda creadas..."
 show_header "FUNCIONES LAMBDA CREADAS" $YELLOW

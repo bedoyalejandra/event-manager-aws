@@ -22,6 +22,23 @@ Parameters:
     Type: String
     Description: S3 bucket containing Lambda code (created automatically)
 
+  # Resource validation parameters
+  CreateS3Buckets:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Whether to create new S3 buckets or use existing ones
+
+  ExistingLambdaCodeBucket:
+    Type: String
+    Default: ""
+    Description: Name of existing Lambda code bucket (required if CreateS3Buckets=false)
+
+  ExistingReportsBucket:
+    Type: String
+    Default: ""
+    Description: Name of existing reports bucket (required if CreateS3Buckets=false)
+
 Resources:
   # ===========================================
   # VPC Stack - Red privada para los recursos
@@ -55,6 +72,9 @@ Resources:
       TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/s3.yml'
       Parameters:
         Environment: !Ref Environment
+        CreateS3Buckets: !Ref CreateS3Buckets
+        ExistingLambdaCodeBucket: !Ref ExistingLambdaCodeBucket
+        ExistingReportsBucket: !Ref ExistingReportsBucket
 
   # ===========================================
   # Cognito Stack - Autenticación de usuarios

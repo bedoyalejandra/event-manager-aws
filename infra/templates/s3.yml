@@ -8,12 +8,36 @@ Parameters:
     AllowedValues: [dev, prod]
     Description: Environment name
 
+  # Resource validation parameters
+  CreateS3Buckets:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Whether to create new S3 buckets or use existing ones
+
+  ExistingLambdaCodeBucket:
+    Type: String
+    Default: ""
+    Description: Name of existing Lambda code bucket (required if CreateS3Buckets=false)
+
+  ExistingReportsBucket:
+    Type: String
+    Default: ""
+    Description: Name of existing reports bucket (required if CreateS3Buckets=false)
+
+Conditions:
+  CreateNewBuckets: !Equals [!Ref CreateS3Buckets, "true"]
+  UseExistingBuckets: !Equals [!Ref CreateS3Buckets, "false"]
+
 Resources:
   # ===========================================
   # Bucket para código Lambda (automático)
   # ===========================================
   LambdaCodeBucket:
     Type: AWS::S3::Bucket
+    Condition: CreateNewBuckets
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub "event-manager-lambda-code-${Environment}-${AWS::AccountId}"
       BucketEncryption:
@@ -33,6 +57,9 @@ Resources:
   # ===========================================
   ReportsBucket:
     Type: AWS::S3::Bucket
+    Condition: CreateNewBuckets
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub "event-manager-reports-${Environment}-${AWS::AccountId}"
       BucketEncryption:
@@ -57,6 +84,7 @@ Resources:
   # ===========================================
   ReportsBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: CreateNewBuckets
     Properties:
       Bucket: !Ref ReportsBucket
       PolicyDocument:
@@ -77,24 +105,30 @@ Resources:
 Outputs:
   LambdaCodeBucketName:
     Description: Nombre del bucket para código Lambda
-    Value: !Ref LambdaCodeBucket
+    Value: !If [CreateNewBuckets, !Ref LambdaCodeBucket, !Ref ExistingLambdaCodeBucket]
     Export:
       Name: !Sub "${AWS::StackName}-LambdaCodeBucketName"
 
   LambdaCodeBucketArn:
     Description: ARN del bucket para código Lambda
-    Value: !GetAtt LambdaCodeBucket.Arn
+    Value: !If 
+      - CreateNewBuckets
+      - !GetAtt LambdaCodeBucket.Arn
+      - !Sub "arn:aws:s3:::${ExistingLambdaCodeBucket}"
     Export:
       Name: !Sub "${AWS::StackName}-LambdaCodeBucketArn"
 
   ReportsBucketName:
     Description: Nombre del bucket para reportes
-    Value: !Ref ReportsBucket
+    Value: !If [CreateNewBuckets, !Ref ReportsBucket, !Ref ExistingReportsBucket]
     Export:
       Name: !Sub "${AWS::StackName}-ReportsBucketName"
 
   ReportsBucketArn:
     Description: ARN del bucket para reportes
-    Value: !GetAtt ReportsBucket.Arn
+    Value: !If 
+      - CreateNewBuckets
+      - !GetAtt ReportsBucket.Arn
+      - !Sub "arn:aws:s3:::${ExistingReportsBucket}"
     Export:
       Name: !Sub "${AWS::StackName}-ReportsBucketArn"
