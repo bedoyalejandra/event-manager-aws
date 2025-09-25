@@ -13,10 +13,82 @@ show_banner "⚠️ ADVERTENCIA ⚠️" "Este script eliminará TODOS los recurs
 
 check_aws_credentials || exit 1
 
-# Listar stacks existentes
+# Función especial para casos de emergencia con stacks DELETE_FAILED
+# Se puede llamar con: ./cleanup.sh --fix-failed-stacks
+if [[ "$1" == "--fix-failed-stacks" ]]; then
+    echo -e "\n${YELLOW}=== MODO REPARACIÓN: STACKS DELETE_FAILED ===${NC}"
+    log_info "Buscando y reparando stacks en estado DELETE_FAILED..."
+    
+    FAILED_STACKS=$(aws cloudformation list-stacks \
+        --stack-status-filter DELETE_FAILED \
+        --query 'StackSummaries[?contains(StackName, `event-manager`)].{Name:StackName,Status:StackStatus}' \
+        --output table)
+    
+    if [[ -z "$FAILED_STACKS" || "$FAILED_STACKS" == *"None"* ]]; then
+        log_success "No se encontraron stacks en estado DELETE_FAILED"
+        exit 0
+    fi
+    
+    echo -e "\n${YELLOW}=== STACKS EN DELETE_FAILED ===${NC}"
+    echo "$FAILED_STACKS"
+    
+    echo -e "\n${YELLOW}¿Quieres intentar reparar estos stacks? (yes/no):${NC}"
+    read -r fix_confirmation
+    
+    if [[ "$fix_confirmation" == "yes" ]]; then
+        # Definir funciones necesarias aquí
+        cleanup_s3_buckets() {
+            local stack_name=$1
+            log_info "Limpiando buckets S3 del stack: $stack_name"
+            
+            if aws cloudformation describe-stacks --stack-name "$stack_name" > /dev/null 2>&1; then
+                local buckets=$(aws cloudformation describe-stack-resources \
+                    --stack-name "$stack_name" \
+                    --query 'StackResources[?ResourceType==`AWS::S3::Bucket`].PhysicalResourceId' \
+                    --output text 2>/dev/null || echo "")
+                
+                if [[ -n "$buckets" && "$buckets" != "None" ]]; then
+                    for bucket in $buckets; do
+                        if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+                            log_info "Vaciando bucket: $bucket"
+                            aws s3 rm s3://$bucket --recursive 2>/dev/null || true
+                            log_success "Bucket $bucket vaciado"
+                        fi
+                    done
+                fi
+            fi
+        }
+        
+        force_delete_failed_stack() {
+            local stack_name=$1
+            log_warning "Intentando forzar eliminación del stack: $stack_name"
+            cleanup_s3_buckets "$stack_name"
+            aws cloudformation delete-stack --stack-name "$stack_name" || true
+            log_info "Stack $stack_name marcado para eliminación"
+        }
+        
+        FAILED_STACK_NAMES=$(aws cloudformation list-stacks \
+            --stack-status-filter DELETE_FAILED \
+            --query 'StackSummaries[?contains(StackName, `event-manager`)].StackName' \
+            --output text)
+        
+        for stack in $FAILED_STACK_NAMES; do
+            log_info "Reparando stack: $stack"
+            force_delete_failed_stack "$stack"
+        done
+        
+        log_success "Proceso de reparación completado"
+    else
+        log_info "Reparación cancelada por el usuario"
+    fi
+    
+    exit 0
+fi
+
+# Listar stacks existentes (incluyendo DELETE_FAILED)
 log_info "Buscando stacks relacionados con event-manager..."
 EXISTING_STACKS=$(aws cloudformation list-stacks \
-    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE CREATE_FAILED UPDATE_FAILED ROLLBACK_COMPLETE \
+    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE CREATE_FAILED UPDATE_FAILED ROLLBACK_COMPLETE DELETE_FAILED \
     --query 'StackSummaries[?contains(StackName, `event-manager`)].{Name:StackName,Status:StackStatus}' \
     --output table)
 
@@ -49,6 +121,95 @@ fi
 
 log_warning "Iniciando proceso de eliminación..."
 
+# Paso 0: Manejar stacks en estado DELETE_FAILED
+log_info "Verificando stacks en estado DELETE_FAILED..."
+FAILED_STACKS=$(aws cloudformation list-stacks \
+    --stack-status-filter DELETE_FAILED \
+    --query 'StackSummaries[?contains(StackName, `event-manager`)].StackName' \
+    --output text 2>/dev/null || echo "")
+
+if [[ -n "$FAILED_STACKS" && "$FAILED_STACKS" != "None" ]]; then
+    log_warning "Se encontraron stacks en estado DELETE_FAILED: $FAILED_STACKS"
+    for stack in $FAILED_STACKS; do
+        log_info "Intentando limpiar stack fallido: $stack"
+        force_delete_failed_stack "$stack"
+    done
+fi
+
+# Función para limpiar buckets S3 de un stack
+cleanup_s3_buckets() {
+    local stack_name=$1
+    log_info "Limpiando buckets S3 del stack: $stack_name"
+    
+    if aws cloudformation describe-stacks --stack-name "$stack_name" > /dev/null 2>&1; then
+        # Obtener todos los buckets del stack
+        local buckets=$(aws cloudformation describe-stack-resources \
+            --stack-name "$stack_name" \
+            --query 'StackResources[?ResourceType==`AWS::S3::Bucket`].PhysicalResourceId' \
+            --output text 2>/dev/null || echo "")
+        
+        if [[ -n "$buckets" && "$buckets" != "None" ]]; then
+            for bucket in $buckets; do
+                if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+                    log_info "Vaciando bucket: $bucket"
+                    # Eliminar todas las versiones de objetos
+                    aws s3api delete-objects --bucket "$bucket" \
+                        --delete "$(aws s3api list-object-versions --bucket "$bucket" \
+                        --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
+                        --max-items 1000)" 2>/dev/null || true
+                    
+                    # Eliminar marcadores de eliminación
+                    aws s3api delete-objects --bucket "$bucket" \
+                        --delete "$(aws s3api list-object-versions --bucket "$bucket" \
+                        --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
+                        --max-items 1000)" 2>/dev/null || true
+                    
+                    # Eliminar objetos normales
+                    aws s3 rm s3://$bucket --recursive 2>/dev/null || true
+                    log_success "Bucket $bucket vaciado"
+                else
+                    log_warning "Bucket $bucket no existe o no es accesible"
+                fi
+            done
+        fi
+    fi
+}
+
+# Función para forzar eliminación de stack en DELETE_FAILED
+force_delete_failed_stack() {
+    local stack_name=$1
+    log_warning "Intentando forzar eliminación del stack en estado DELETE_FAILED: $stack_name"
+    
+    # Primero limpiar buckets S3
+    cleanup_s3_buckets "$stack_name"
+    
+    # Intentar eliminar el stack nuevamente
+    log_info "Reintentando eliminación del stack: $stack_name"
+    aws cloudformation delete-stack --stack-name "$stack_name" || true
+    
+    # Esperar un poco y verificar
+    sleep 10
+    local status=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null || echo "DELETE_COMPLETE")
+    
+    if [[ "$status" == "DELETE_FAILED" ]]; then
+        log_error "Stack $stack_name sigue en estado DELETE_FAILED"
+        log_info "Mostrando recursos que fallaron al eliminar:"
+        aws cloudformation describe-stack-events \
+            --stack-name "$stack_name" \
+            --query 'StackEvents[?ResourceStatus==`DELETE_FAILED`].[LogicalResourceId,ResourceStatusReason]' \
+            --output table
+        
+        log_warning "Puedes necesitar eliminar recursos manualmente o contactar soporte AWS"
+        return 1
+    else
+        log_info "Stack $stack_name ahora en estado: $status"
+        return 0
+    fi
+}
+
 # Función para esperar a que un stack se elimine
 wait_for_stack_deletion() {
     local stack_name=$1
@@ -65,11 +226,11 @@ wait_for_stack_deletion() {
             break
         elif [[ "$status" == "DELETE_FAILED" ]]; then
             log_error "Error al eliminar el stack $stack_name"
-            aws cloudformation describe-stack-events \
-                --stack-name "$stack_name" \
-                --query 'StackEvents[?ResourceStatus==`DELETE_FAILED`]' \
-                --output table
-            break
+            if force_delete_failed_stack "$stack_name"; then
+                continue  # Reintentar el bucle
+            else
+                break  # Salir si no se puede forzar la eliminación
+            fi
         else
             log_info "Estado actual del stack $stack_name: $status"
             sleep 30
@@ -127,7 +288,7 @@ fi
 # Paso 4: Verificar que todos los stacks fueron eliminados
 log_info "Verificando que todos los stacks fueron eliminados..."
 REMAINING_STACKS=$(aws cloudformation list-stacks \
-    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE CREATE_FAILED UPDATE_FAILED ROLLBACK_COMPLETE \
+    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE CREATE_FAILED UPDATE_FAILED ROLLBACK_COMPLETE DELETE_FAILED \
     --query 'StackSummaries[?contains(StackName, `event-manager`)].StackName' \
     --output text)
 
@@ -191,3 +352,4 @@ echo -e "\n${BLUE}Para volver a desplegar el sistema, ejecuta:${NC}"
 echo "./deploy.sh"
 
 log_success "¡Limpieza completada exitosamente!"
+
