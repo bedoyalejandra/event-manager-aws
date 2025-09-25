@@ -2,71 +2,177 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Event Management App - Master Stack
 
 Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name (dev or prod)
+  
   DBUsername:
     Type: String
-  DBPassword:
+    Default: event_admin
+    Description: Database username
+  
+  S3LambdaBucket:
     Type: String
-    NoEcho: true
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
+    Description: S3 bucket containing Lambda code
+  
+  LambdaCodeKey:
+    Type: String
+    Default: lambda-functions.zip
+    Description: S3 key for Lambda code package
 
 Resources:
+  # ===========================================
+  # VPC Stack - Red privada para los recursos
+  # ===========================================
   VPCStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./templates/vpc.yml
+      Parameters:
+        Environment: !Ref Environment
 
+  # ===========================================
+  # RDS Stack - Base de datos Aurora Serverless
+  # ===========================================
   RDSStack:
     Type: AWS::CloudFormation::Stack
+    DependsOn: VPCStack
     Properties:
       TemplateURL: ./templates/rds.yml
       Parameters:
+        VpcId: !GetAtt VPCStack.Outputs.VpcId
+        SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
         DBUsername: !Ref DBUsername
-        DBPassword: !Ref DBPassword
-        VpcId: !Ref VpcId
-        SubnetIds: !Ref SubnetIds
 
-  InitDBStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./templates/initdb.yml
-      Parameters:
-        VpcId: !Ref VpcId
-        SubnetIds: !Ref SubnetIds
-        RDSSecretArn: !GetAtt RDSStack.Outputs.RDSSecretArn
-        RDSClusterEndpoint: !GetAtt RDSStack.Outputs.RDSClusterEndpoint
-        SecurityGroupId: !GetAtt RDSStack.Outputs.RDSSecurityGroupId
-        LambdaCodeBucket: your-code-bucket
-        LambdaCodeKey: initdb.zip
-
-  LambdasStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./templates/lambdas.yml
-
-  ApiGatewayStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./templates/apigateway.yml
-
-  CognitoStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./templates/cognito.yml
-
-  SQSSesStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ./templates/sqs-ses.yml
-
+  # ===========================================
+  # S3 Stack - Buckets para reportes
+  # ===========================================
   S3Stack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./templates/s3.yml
+      Parameters:
+        Environment: !Ref Environment
 
-  StepFunctionsStack:
+  # ===========================================
+  # Cognito Stack - Autenticación de usuarios
+  # ===========================================
+  CognitoStack:
     Type: AWS::CloudFormation::Stack
     Properties:
+      TemplateURL: ./templates/cognito.yml
+      Parameters:
+        Environment: !Ref Environment
+
+  # ===========================================
+  # SQS + SES Stack - Colas y servicio de email
+  # ===========================================
+  SQSSesStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/sqs-ses.yml
+      Parameters:
+        Environment: !Ref Environment
+
+  # ===========================================
+  # Lambda Functions Stack - Todas las funciones
+  # ===========================================
+  LambdasStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [VPCStack, RDSStack, S3Stack, SQSSesStack]
+    Properties:
+      TemplateURL: ./templates/lambdas.yml
+      Parameters:
+        VpcId: !GetAtt VPCStack.Outputs.VpcId
+        SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
+        RDSSecretArn: !GetAtt RDSStack.Outputs.RDSSecretArn
+        SecurityGroupId: !GetAtt RDSStack.Outputs.RDSSecurityGroupId
+        LambdaCodeBucket: !Ref S3LambdaBucket
+        LambdaCodeKey: !Ref LambdaCodeKey
+        ReportsBucket: !GetAtt S3Stack.Outputs.ReportsBucketName
+        EmailQueue: !GetAtt SQSSesStack.Outputs.EmailQueueUrl
+        Environment: !Ref Environment
+
+  # ===========================================
+  # InitDB Stack - Inicialización de base de datos
+  # ===========================================
+  InitDBStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [VPCStack, RDSStack]
+    Properties:
+      TemplateURL: ./templates/initdb.yml
+      Parameters:
+        VpcId: !GetAtt VPCStack.Outputs.VpcId
+        SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
+        RDSSecretArn: !GetAtt RDSStack.Outputs.RDSSecretArn
+        RDSClusterEndpoint: !GetAtt RDSStack.Outputs.RDSClusterEndpoint
+        SecurityGroupId: !GetAtt RDSStack.Outputs.RDSSecurityGroupId
+        LambdaCodeBucket: !Ref S3LambdaBucket
+        LambdaCodeKey: !Ref LambdaCodeKey
+        Environment: !Ref Environment
+
+  # ===========================================
+  # API Gateway Stack - API REST
+  # ===========================================
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [LambdasStack, CognitoStack]
+    Properties:
+      TemplateURL: ./templates/apigateway.yml
+      Parameters:
+        CognitoUserPoolId: !GetAtt CognitoStack.Outputs.UserPoolId
+        CognitoUserPoolArn: !GetAtt CognitoStack.Outputs.UserPoolArn
+        CreateEventLambdaArn: !GetAtt LambdasStack.Outputs.CreateEventLambdaArn
+        UpdateEventLambdaArn: !GetAtt LambdasStack.Outputs.UpdateEventLambdaArn
+        DeleteEventLambdaArn: !GetAtt LambdasStack.Outputs.DeleteEventLambdaArn
+        GetActiveEventsLambdaArn: !GetAtt LambdasStack.Outputs.GetActiveEventsLambdaArn
+        Environment: !Ref Environment
+
+  # ===========================================
+  # Step Functions Stack - Workflows
+  # ===========================================
+  StepFunctionsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: LambdasStack
+    Properties:
       TemplateURL: ./templates/stepfunctions.yml
+      Parameters:
+        GenerateReportLambdaArn: !GetAtt LambdasStack.Outputs.GenerateReportLambdaArn
+        ProcessReportDataLambdaArn: !GetAtt LambdasStack.Outputs.ProcessReportDataLambdaArn
+        Environment: !Ref Environment
+
+# ===========================================
+# Outputs - Información importante del stack
+# ===========================================
+Outputs:
+  StackName:
+    Description: Nombre del stack principal
+    Value: !Ref AWS::StackName
+    Export:
+      Name: !Sub "${AWS::StackName}-StackName"
+
+  Environment:
+    Description: Entorno de despliegue
+    Value: !Ref Environment
+    Export:
+      Name: !Sub "${AWS::StackName}-Environment"
+
+  ApiGatewayUrl:
+    Description: URL del API Gateway
+    Value: !GetAtt ApiGatewayStack.Outputs.ApiGatewayUrl
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiGatewayUrl"
+
+  DatabaseEndpoint:
+    Description: Endpoint de la base de datos
+    Value: !GetAtt RDSStack.Outputs.RDSClusterEndpoint
+    Export:
+      Name: !Sub "${AWS::StackName}-DatabaseEndpoint"
+
+  CognitoUserPoolId:
+    Description: ID del User Pool de Cognito
+    Value: !GetAtt CognitoStack.Outputs.UserPoolId
+    Export:
+      Name: !Sub "${AWS::StackName}-CognitoUserPoolId"

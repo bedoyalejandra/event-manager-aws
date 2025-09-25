@@ -46,7 +46,6 @@ pipelines:
               --parameter-overrides \
                 Environment=$ENVIRONMENT \
                 DBUsername=$DB_USERNAME \
-                DBPassword=$DB_PASSWORD \
                 S3LambdaBucket=$S3_LAMBDA_BUCKET \
                 LambdaCodeKey=lambda-functions.zip
           - echo "Stack deployment completed"

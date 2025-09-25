@@ -101,10 +101,11 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --parameter-overrides \
     Environment=dev \
-    DBUsername=admin \
-    DBPassword=tu-password \
+    DBUsername=event_admin \
     S3LambdaBucket=tu-bucket-lambda-code \
     LambdaCodeKey=lambda-functions.zip
+
+# Nota: No necesitas especificar DBPassword porque se genera automáticamente
 ```
 
 ### Despliegue Automático con Bitbucket
@@ -125,11 +126,12 @@ Ve a **Repository settings** > **Pipelines** > **Repository variables** y config
 | `AWS_ACCESS_KEY_ID` | Access Key de AWS | `AKIA...` | No |
 | `AWS_SECRET_ACCESS_KEY` | Secret Key de AWS | `...` | ✅ Sí |
 | `AWS_DEFAULT_REGION` | Región de AWS | `us-east-1` | No |
-| `DB_USERNAME` | Usuario de la base de datos | `admin` | No |
-| `DB_PASSWORD` | Contraseña de la base de datos | `...` | ✅ Sí |
+| `DB_USERNAME` | Usuario de la base de datos | `event_admin` | No |
 | `S3_LAMBDA_BUCKET` | Bucket S3 para código Lambda | `event-manager-lambda-code` | No |
 | `STACK_NAME` | Nombre del stack CloudFormation | `event-manager` | No |
 | `ENVIRONMENT` | Entorno (dev/prod) | `dev` | No |
+
+> **📝 Nota Importante**: No necesitas configurar `DB_PASSWORD` porque se genera automáticamente en **AWS Secrets Manager** durante el despliegue.
 
 #### 3. Credenciales AWS
 
@@ -177,6 +179,78 @@ Ve a **Repository settings** > **Pipelines** > **Repository variables** y config
 - **main**: Despliegue manual a producción
 - **feature/***: Pipeline de validación sin despliegue
 
+## 🔐 Manejo Automático de Credenciales
+
+### Cómo Funciona el Sistema de Credenciales
+
+El proyecto utiliza **AWS Secrets Manager** para manejar automáticamente las credenciales de la base de datos:
+
+#### 1. **Generación Automática de Contraseñas**
+```yaml
+# En rds.yml - CloudFormation genera automáticamente la contraseña
+DBCredentialsSecret:
+  Type: AWS::SecretsManager::Secret
+  Properties:
+    Name: event-app/db-credentials
+    GenerateSecretString:
+      SecretStringTemplate: '{"username":"event_admin"}'
+      GenerateStringKey: password
+      PasswordLength: 30
+      ExcludePunctuation: true
+```
+
+#### 2. **Acceso desde Lambda Functions**
+```javascript
+// En tus funciones Lambda - Código de ejemplo
+const AWS = require('aws-sdk');
+const secretsManager = new AWS.SecretsManager();
+
+async function getDBCredentials() {
+    const secretArn = process.env.RDS_SECRET_ARN;
+    const secret = await secretsManager.getSecretValue({
+        SecretId: secretArn
+    }).promise();
+    
+    return JSON.parse(secret.SecretString);
+}
+
+// Uso en tu función
+const dbCredentials = await getDBCredentials();
+const connection = mysql.createConnection({
+    host: process.env.DB_ENDPOINT,
+    user: dbCredentials.username,
+    password: dbCredentials.password,
+    database: process.env.DB_NAME
+});
+```
+
+#### 3. **Variables de Entorno Automáticas**
+Las funciones Lambda reciben automáticamente:
+- `RDS_SECRET_ARN`: ARN del secreto en Secrets Manager
+- `DB_NAME`: Nombre de la base de datos
+- `DB_ENDPOINT`: Endpoint del cluster Aurora
+
+#### 4. **Buckets S3 Automáticos**
+Los buckets S3 se crean automáticamente y sus nombres se pasan como variables de entorno:
+- `REPORTS_BUCKET`: Para almacenar reportes generados
+- `LAMBDA_CODE_BUCKET`: Para el código de las funciones
+
+### Obtener Credenciales Manualmente (Si Necesario)
+
+Si necesitas acceder a las credenciales desde fuera de Lambda:
+
+```bash
+# Obtener credenciales de la base de datos
+aws secretsmanager get-secret-value \
+    --secret-id event-app/db-credentials \
+    --query SecretString --output text | jq .
+
+# Obtener outputs del stack CloudFormation
+aws cloudformation describe-stacks \
+    --stack-name event-manager \
+    --query 'Stacks[0].Outputs'
+```
+
 ## 🔧 Pipeline de CI/CD
 
 El pipeline de Bitbucket ejecuta automáticamente:
@@ -185,6 +259,13 @@ El pipeline de Bitbucket ejecuta automáticamente:
 2. **Upload**: Sube el código a S3
 3. **Deploy**: Despliega infraestructura con CloudFormation
 4. **Initialize**: Ejecuta la función de inicialización de BD
+
+### Flujo de Credenciales en el Pipeline
+
+1. **CloudFormation** crea el secreto en Secrets Manager
+2. **Aurora** se configura automáticamente con las credenciales del secreto
+3. **Lambda Functions** reciben el ARN del secreto como variable de entorno
+4. **Funciones** acceden a las credenciales usando el SDK de AWS
 
 ## 📊 Monitoreo y Logs
 
@@ -242,16 +323,63 @@ aws lambda invoke --function-name event-manager-CreateEventLambda --payload '{}'
 
 ## 📝 Desarrollo Local
 
+### Configuración del Entorno Local
+
+1. **Copia el archivo de variables de entorno:**
 ```bash
-# Instalar dependencias
+cp .env.example .env
+```
+
+2. **Edita el archivo `.env` con tus credenciales:**
+```bash
+# Variables requeridas para desarrollo local
+AWS_ACCESS_KEY_ID=tu-access-key
+AWS_SECRET_ACCESS_KEY=tu-secret-key
+AWS_DEFAULT_REGION=us-east-1
+STACK_NAME=event-manager-dev
+ENVIRONMENT=dev
+S3_LAMBDA_BUCKET=tu-bucket-lambda-code
+DB_USERNAME=event_admin
+```
+
+3. **Instalar dependencias:**
+```bash
+# En el directorio raíz
 npm install
+
+# En cada función Lambda (si tienen package.json)
+for dir in src/*/; do
+  if [ -f "$dir/package.json" ]; then
+    cd "$dir" && npm install && cd -
+  fi
+done
+```
+
+4. **Comandos útiles para desarrollo:**
+```bash
+# Validar templates CloudFormation
+aws cloudformation validate-template --template-body file://infra/master-template.yml
 
 # Ejecutar tests (si existen)
 npm test
 
-# Validar templates CloudFormation
-aws cloudformation validate-template --template-body file://infra/master-template.yml
+# Empaquetar funciones Lambda localmente
+zip -r lambda-functions.zip src/
+
+# Invocar función Lambda después del despliegue
+aws lambda invoke \
+  --function-name event-manager-CreateEventLambda \
+  --payload '{"test": true}' \
+  response.json
 ```
+
+### Variables de Entorno por Contexto
+
+| Contexto | Variables Requeridas |
+|----------|---------------------|
+| **Desarrollo Local** | AWS credentials, STACK_NAME, ENVIRONMENT, S3_LAMBDA_BUCKET, DB_USERNAME |
+| **Bitbucket Pipeline** | Mismas variables configuradas en Repository Settings |
+| **Funciones Lambda** | Se configuran automáticamente por CloudFormation |
 
 ## 🤝 Contribución
 
