@@ -25,6 +25,71 @@ Antes de comenzar, asegúrate de tener:
 
 4. **Permisos IAM** necesarios (ver sección de Políticas IAM)
 
+## 🚀 Despliegue Rápido (Recomendado)
+
+**¡NUEVO!** Ahora puedes desplegar todo automáticamente con un solo comando:
+
+```bash
+# Despliegue automatizado completo
+./scripts/deploy.sh
+```
+
+Este script ejecuta todos los pasos automáticamente con validaciones y manejo de errores. **Es la forma más rápida y segura de desplegar.**
+
+### Características del Script Automatizado:
+- ✅ Validaciones previas automáticas
+- ✅ Manejo de errores robusto
+- ✅ Output colorizado y progreso visual
+- ✅ Limpieza automática de archivos temporales
+- ✅ Resumen completo al final
+
+### Para Verificar Estado:
+```bash
+# Ver estado actual del sistema
+./scripts/status.sh
+```
+
+### Para Eliminar Todo:
+```bash
+# Limpieza completa de recursos (¡CUIDADO!)
+./scripts/cleanup.sh
+```
+
+### Personalizar el Despliegue:
+```bash
+# Cambiar environment (dev/prod)
+ENVIRONMENT=prod ./scripts/deploy.sh
+
+# Cambiar usuario de base de datos
+DB_USERNAME=mi_usuario ./scripts/deploy.sh
+
+# Cambiar región AWS
+AWS_REGION=us-east-1 ./scripts/deploy.sh
+
+# Combinar múltiples variables
+ENVIRONMENT=prod DB_USERNAME=admin AWS_REGION=us-east-1 ./scripts/deploy.sh
+```
+
+---
+
+## 🔍 Verificar Estado Actual
+
+Antes de comenzar, verifica si ya tienes stacks desplegados:
+
+```bash
+# Verificar stacks existentes relacionados con event-manager
+aws cloudformation list-stacks \
+    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
+    --query 'StackSummaries[?contains(StackName, `event-manager`)].{Name:StackName,Status:StackStatus,Created:CreationTime}' \
+    --output table
+
+# Verificar credenciales y región
+aws sts get-caller-identity
+aws configure get region
+```
+
+Si no ves ningún stack con "event-manager" en el nombre, necesitas seguir todos los pasos del despliegue.
+
 ## 🎯 Pasos del Despliegue Manual
 
 ### Paso 1: Preparar el Entorno
@@ -123,10 +188,13 @@ aws cloudformation deploy \
 aws cloudformation describe-stacks --stack-name event-manager
 
 # Ver todos los outputs del stack (endpoints, ARNs, etc.)
+# NOTA: Este comando solo funcionará DESPUÉS de completar el despliegue (Paso 7)
 aws cloudformation describe-stacks \
     --stack-name event-manager \
     --query 'Stacks[0].Outputs' \
     --output table
+
+# Si el stack no existe aún, verás un error. Primero completa los pasos 1-7.
 
 # Listar todos los stacks creados
 aws cloudformation list-stacks \
@@ -371,3 +439,51 @@ Una vez completados todos los pasos, tendrás un sistema completo de gestión de
 - Monitoreo con CloudWatch
 
 ¡Tu aplicación estará lista para usar!
+
+---
+
+## 📜 Scripts Automatizados
+
+Este proyecto incluye scripts automatizados para facilitar el despliegue:
+
+### `scripts/deploy.sh` - Script de Despliegue Automatizado
+- Ejecuta todos los pasos del despliegue automáticamente
+- Incluye validaciones y manejo de errores
+- Muestra progreso visual con colores
+- Genera resumen completo al final
+- **Recomendado para todos los despliegues**
+
+### `scripts/status.sh` - Script de Estado del Sistema
+- Muestra el estado actual de todos los recursos
+- Verifica stacks, funciones Lambda, buckets S3, RDS, etc.
+- Proporciona información detallada de endpoints
+- Cuenta recursos desplegados
+- **Útil para monitoreo y diagnóstico**
+
+### `scripts/cleanup.sh` - Script de Limpieza
+- Elimina todos los recursos de AWS
+- Incluye confirmaciones de seguridad
+- Vacía buckets S3 antes de eliminar
+- Detecta recursos huérfanos
+- **¡CUIDADO! Esta acción no se puede deshacer**
+
+### `scripts/utils.sh` - Utilidades Comunes
+- Funciones reutilizables para logging
+- Validaciones de credenciales AWS
+- Funciones de progreso y banners
+- Manejo de stacks y outputs
+- **Usado por todos los demás scripts**
+
+### Uso:
+```bash
+# Los scripts ya son ejecutables, solo úsalos directamente:
+
+# Ver estado actual
+./scripts/status.sh
+
+# Desplegar sistema completo
+./scripts/deploy.sh
+
+# Limpiar todos los recursos
+./scripts/cleanup.sh
+```
