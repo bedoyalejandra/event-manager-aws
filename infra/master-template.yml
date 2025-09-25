@@ -29,7 +29,7 @@ Resources:
   VPCStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: ./templates/vpc.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/vpc.yml'
       Parameters:
         Environment: !Ref Environment
 
@@ -40,7 +40,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: VPCStack
     Properties:
-      TemplateURL: ./templates/rds.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/rds.yml'
       Parameters:
         VpcId: !GetAtt VPCStack.Outputs.VpcId
         SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
@@ -52,7 +52,7 @@ Resources:
   S3Stack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: ./templates/s3.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/s3.yml'
       Parameters:
         Environment: !Ref Environment
 
@@ -62,7 +62,7 @@ Resources:
   CognitoStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: ./templates/cognito.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/cognito.yml'
       Parameters:
         Environment: !Ref Environment
 
@@ -72,7 +72,7 @@ Resources:
   SQSSesStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: ./templates/sqs-ses.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/sqs-ses.yml'
       Parameters:
         Environment: !Ref Environment
 
@@ -83,7 +83,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: [VPCStack, RDSStack, S3Stack, SQSSesStack]
     Properties:
-      TemplateURL: ./templates/lambdas.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/lambdas.yml'
       Parameters:
         VpcId: !GetAtt VPCStack.Outputs.VpcId
         SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
@@ -102,7 +102,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: [VPCStack, RDSStack]
     Properties:
-      TemplateURL: ./templates/initdb.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/initdb.yml'
       Parameters:
         VpcId: !GetAtt VPCStack.Outputs.VpcId
         SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
@@ -120,7 +120,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: [LambdasStack, CognitoStack]
     Properties:
-      TemplateURL: ./templates/apigateway.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/apigateway.yml'
       Parameters:
         CognitoUserPoolId: !GetAtt CognitoStack.Outputs.UserPoolId
         CognitoUserPoolArn: !GetAtt CognitoStack.Outputs.UserPoolArn
@@ -137,7 +137,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: LambdasStack
     Properties:
-      TemplateURL: ./templates/stepfunctions.yml
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/stepfunctions.yml'
       Parameters:
         GenerateReportLambdaArn: !GetAtt LambdasStack.Outputs.GenerateReportLambdaArn
         ProcessReportDataLambdaArn: !GetAtt LambdasStack.Outputs.ProcessReportDataLambdaArn
