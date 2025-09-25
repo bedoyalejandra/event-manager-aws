@@ -13,7 +13,7 @@
   },
   {
     "ParameterKey": "LambdaCodeKey",
-    "ParameterValue": "lambda-code.zip"
+    "ParameterValue": "lambda-functions.zip"
   },
   {
     "ParameterKey": "CreateS3Buckets",
