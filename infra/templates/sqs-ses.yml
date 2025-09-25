@@ -8,6 +8,22 @@ Parameters:
     AllowedValues: [dev, prod]
     Description: Environment name (dev or prod)
 
+  # Resource validation parameters
+  CreateSESResources:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Whether to create new SES resources or use existing ones
+
+  ExistingSESConfigurationSet:
+    Type: String
+    Default: ""
+    Description: Name of existing SES configuration set (required if CreateSESResources=false)
+
+Conditions:
+  CreateNewSESResources: !Equals [!Ref CreateSESResources, "true"]
+  UseExistingSESResources: !Equals [!Ref CreateSESResources, "false"]
+
 Resources:
   # ===========================================
   # SQS Queue for Email Processing
@@ -113,6 +129,9 @@ Resources:
   # ===========================================
   SESConfigurationSet:
     Type: AWS::SES::ConfigurationSet
+    Condition: CreateNewSESResources
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       Name: !Sub 'event-manager-config-set-${Environment}'
 
@@ -121,8 +140,11 @@ Resources:
   # ===========================================
   SESEventDestination:
     Type: AWS::SES::ConfigurationSetEventDestination
+    Condition: CreateNewSESResources
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
-      ConfigurationSetName: !Ref SESConfigurationSet
+      ConfigurationSetName: !If [CreateNewSESResources, !Ref SESConfigurationSet, !Ref ExistingSESConfigurationSet]
       EventDestination:
         Name: !Sub 'event-manager-event-destination-${Environment}'
         Enabled: true

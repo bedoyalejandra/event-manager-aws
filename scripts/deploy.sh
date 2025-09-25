@@ -135,7 +135,9 @@ aws cloudformation deploy \
         LambdaCodeKey=lambda-functions.zip \
         CreateS3Buckets=false \
         ExistingLambdaCodeBucket=$LAMBDA_BUCKET \
-        ExistingReportsBucket=event-manager-reports-$ENVIRONMENT-$(aws sts get-caller-identity --query Account --output text)
+        ExistingReportsBucket=event-manager-reports-$ENVIRONMENT-$(aws sts get-caller-identity --query Account --output text) \
+        CreateSESResources=false \
+        ExistingSESConfigurationSet=event-manager-config-set-$ENVIRONMENT
 
 log_success "Stack principal desplegado correctamente"
 

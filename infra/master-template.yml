@@ -39,6 +39,18 @@ Parameters:
     Default: ""
     Description: Name of existing reports bucket (required if CreateS3Buckets=false)
 
+  # SES Resource validation parameters
+  CreateSESResources:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Whether to create new SES resources or use existing ones
+
+  ExistingSESConfigurationSet:
+    Type: String
+    Default: ""
+    Description: Name of existing SES configuration set (required if CreateSESResources=false)
+
 Resources:
   # ===========================================
   # VPC Stack - Red privada para los recursos
@@ -95,6 +107,8 @@ Resources:
       TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/sqs-ses.yml'
       Parameters:
         Environment: !Ref Environment
+        CreateSESResources: !Ref CreateSESResources
+        ExistingSESConfigurationSet: !Ref ExistingSESConfigurationSet
 
   # ===========================================
   # Lambda Functions Stack - Todas las funciones
