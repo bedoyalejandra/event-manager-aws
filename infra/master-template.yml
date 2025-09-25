@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Event Manager App - Master Stack
+
+Resources:
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/vpc.yml
+
+  RDSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/rds.yml
+
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/cognito.yml
+
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/lambdas.yml
+
+  ApiStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/apigateway.yml
+
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/s3.yml
+
+  SqsSesStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/sqs-ses.yml
+
+  StepFunctionsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/stepfunctions.yml
