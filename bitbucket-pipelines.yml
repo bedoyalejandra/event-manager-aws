@@ -30,12 +30,12 @@ pipelines:
         name: Deploy S3 Buckets First
         script:
           - echo "Deploying S3 buckets first..."
-          - aws cloudformation deploy \
-              --template-file infra/templates/s3.yml \
-              --stack-name ${STACK_NAME}-s3 \
-              --capabilities CAPABILITY_IAM \
-              --parameter-overrides \
-                Environment=$ENVIRONMENT
+          - >
+            aws cloudformation deploy
+            --template-file infra/templates/s3.yml
+            --stack-name ${STACK_NAME}-s3
+            --capabilities CAPABILITY_IAM
+            --parameter-overrides Environment=$ENVIRONMENT
           - echo "S3 buckets created successfully"
 
     - step:
@@ -62,15 +62,16 @@ pipelines:
           - echo "Validating CloudFormation template..."
           - aws cloudformation validate-template --template-body file://infra/master-template.yml
           - echo "Deploying main infrastructure stack..."
-          - aws cloudformation deploy \
-              --template-file infra/master-template.yml \
-              --stack-name $STACK_NAME \
-              --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-              --parameter-overrides \
-                Environment=$ENVIRONMENT \
-                DBUsername=$DB_USERNAME \
-                S3LambdaBucket=$LAMBDA_BUCKET \
-                LambdaCodeKey=lambda-functions.zip
+          - >
+            aws cloudformation deploy
+            --template-file infra/master-template.yml
+            --stack-name $STACK_NAME
+            --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+            --parameter-overrides
+              Environment=$ENVIRONMENT
+              DBUsername=$DB_USERNAME
+              S3LambdaBucket=$LAMBDA_BUCKET
+              LambdaCodeKey=lambda-functions.zip
           - echo "Main infrastructure deployment completed"
 
     - step:
@@ -97,7 +98,6 @@ pipelines:
             - export ENVIRONMENT=dev
             - export STACK_NAME=event-manager-dev
             - echo "Building for development environment..."
-            - echo "Installing dependencies for Lambda functions..."
             - for dir in src/*/; do
                 if [ -f "$dir/package.json" ]; then
                   echo "Installing dependencies in $dir"
@@ -117,12 +117,12 @@ pipelines:
             - export ENVIRONMENT=dev
             - export STACK_NAME=event-manager-dev
             - echo "Deploying S3 buckets first..."
-            - aws cloudformation deploy \
-                --template-file infra/templates/s3.yml \
-                --stack-name ${STACK_NAME}-s3 \
-                --capabilities CAPABILITY_IAM \
-                --parameter-overrides \
-                  Environment=$ENVIRONMENT
+            - >
+              aws cloudformation deploy
+              --template-file infra/templates/s3.yml
+              --stack-name ${STACK_NAME}-s3
+              --capabilities CAPABILITY_IAM
+              --parameter-overrides Environment=$ENVIRONMENT
             - echo "S3 buckets created successfully"
 
       - step:
@@ -136,7 +136,6 @@ pipelines:
                 --query 'Stacks[0].Outputs[?OutputKey==`LambdaCodeBucketName`].OutputValue' \
                 --output text)
             - echo "Lambda bucket: $LAMBDA_BUCKET"
-            - echo "Uploading Lambda code to auto-created S3 bucket..."
             - aws s3 cp lambda-functions.zip s3://$LAMBDA_BUCKET/lambda-functions.zip
             - echo "Lambda code uploaded successfully to $LAMBDA_BUCKET"
 
@@ -154,15 +153,16 @@ pipelines:
             - echo "Validating CloudFormation template..."
             - aws cloudformation validate-template --template-body file://infra/master-template.yml
             - echo "Deploying CloudFormation stack to development..."
-            - aws cloudformation deploy \
-                --template-file infra/master-template.yml \
-                --stack-name $STACK_NAME \
-                --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-                --parameter-overrides \
-                  Environment=$ENVIRONMENT \
-                  DBUsername=$DB_USERNAME \
-                  S3LambdaBucket=$LAMBDA_BUCKET \
-                  LambdaCodeKey=lambda-functions.zip
+            - >
+              aws cloudformation deploy
+              --template-file infra/master-template.yml
+              --stack-name $STACK_NAME
+              --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+              --parameter-overrides
+                Environment=$ENVIRONMENT
+                DBUsername=$DB_USERNAME
+                S3LambdaBucket=$LAMBDA_BUCKET
+                LambdaCodeKey=lambda-functions.zip
             - echo "Development stack deployment completed"
 
       - step:
@@ -190,7 +190,6 @@ pipelines:
             - export ENVIRONMENT=prod
             - export STACK_NAME=event-manager-prod
             - echo "Building for production environment..."
-            - echo "Installing dependencies for Lambda functions..."
             - for dir in src/*/; do
                 if [ -f "$dir/package.json" ]; then
                   echo "Installing dependencies in $dir"
@@ -223,15 +222,16 @@ pipelines:
             - echo "Validating CloudFormation template..."
             - aws cloudformation validate-template --template-body file://infra/master-template.yml
             - echo "Deploying CloudFormation stack to production..."
-            - aws cloudformation deploy \
-                --template-file infra/master-template.yml \
-                --stack-name $STACK_NAME \
-                --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-                --parameter-overrides \
-                  Environment=$ENVIRONMENT \
-                  DBUsername=$DB_USERNAME \
-                  S3LambdaBucket=$S3_LAMBDA_BUCKET \
-                  LambdaCodeKey=lambda-functions.zip
+            - >
+              aws cloudformation deploy
+              --template-file infra/master-template.yml
+              --stack-name $STACK_NAME
+              --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+              --parameter-overrides
+                Environment=$ENVIRONMENT
+                DBUsername=$DB_USERNAME
+                S3LambdaBucket=$S3_LAMBDA_BUCKET
+                LambdaCodeKey=lambda-functions.zip
             - echo "Production stack deployment completed"
 
       - step:
