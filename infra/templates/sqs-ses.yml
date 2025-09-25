@@ -270,7 +270,7 @@ Outputs:
 
   SESConfigurationSetName:
     Description: Name of the SES Configuration Set
-    Value: !Ref SESConfigurationSet
+    Value: !If [CreateNewSESResources, !Ref SESConfigurationSet, !Ref ExistingSESConfigurationSet]
     Export:
       Name: !Sub '${AWS::StackName}-SESConfigurationSetName'
 
