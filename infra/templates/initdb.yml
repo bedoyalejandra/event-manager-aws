@@ -28,7 +28,7 @@ Resources:
     Properties:
       FunctionName: InitDBLambda
       Runtime: nodejs18.x
-      Handler: index.handler
+      Handler: src/init-db/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey

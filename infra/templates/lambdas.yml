@@ -32,7 +32,7 @@ Resources:
     Properties:
       FunctionName: CreateEventLambda
       Runtime: nodejs18.x
-      Handler: index.handler
+      Handler: src/create-event/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
