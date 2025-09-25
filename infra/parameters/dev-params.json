@@ -1,0 +1,30 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "DBUsername",
+    "ParameterValue": "eventadmin"
+  },
+  {
+    "ParameterKey": "S3LambdaBucket",
+    "ParameterValue": "event-manager-lambda-code-dev-953108895836"
+  },
+  {
+    "ParameterKey": "LambdaCodeKey",
+    "ParameterValue": "lambda-code.zip"
+  },
+  {
+    "ParameterKey": "CreateS3Buckets",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "ExistingLambdaCodeBucket",
+    "ParameterValue": "event-manager-lambda-code-dev-953108895836"
+  },
+  {
+    "ParameterKey": "ExistingReportsBucket",
+    "ParameterValue": "event-manager-reports-dev-953108895836"
+  }
+]
