@@ -53,8 +53,18 @@ export DB_USERNAME=$DB_USERNAME
 
 log_success "Variables de entorno configuradas"
 
-# PASO 2: Empaquetar funciones Lambda
-show_progress 2 10 "Empaquetando Funciones Lambda"
+# PASO 2: Instalar dependencias y empaquetar funciones Lambda
+show_progress 2 10 "Instalando Dependencias y Empaquetando Funciones Lambda"
+
+log_info "Instalando dependencias de Node.js..."
+cd src/
+if [[ ! -f "package.json" ]]; then
+    log_error "No se encontró package.json en el directorio src/"
+    exit 1
+fi
+
+npm install
+log_success "Dependencias instaladas correctamente"
 
 log_info "Creando archivo ZIP con funciones Lambda..."
 if [[ -f "lambda-functions.zip" ]]; then
@@ -62,9 +72,26 @@ if [[ -f "lambda-functions.zip" ]]; then
     rm lambda-functions.zip
 fi
 
-zip -r lambda-functions.zip src/ > /dev/null
+zip -r lambda-functions.zip . -x "*.zip" "package-lock.json" > /dev/null
 LAMBDA_ZIP_SIZE=$(ls -lh lambda-functions.zip | awk '{print $5}')
 log_success "Archivo lambda-functions.zip creado (Tamaño: $LAMBDA_ZIP_SIZE)"
+
+# Verificar que las dependencias están incluidas en el ZIP
+log_info "Verificando que las dependencias están incluidas..."
+if unzip -l lambda-functions.zip | grep -q "node_modules/mysql2"; then
+    log_success "✅ Dependencias mysql2 incluidas en el ZIP"
+else
+    log_error "❌ Dependencias mysql2 NO encontradas en el ZIP"
+    exit 1
+fi
+
+# Mover el archivo ZIP al directorio raíz del proyecto
+mv lambda-functions.zip ../
+cd ..
+
+log_info "Limpiando node_modules temporales..."
+rm -rf src/node_modules
+log_success "Limpieza completada"
 
 # PASO 3: Crear bucket S3 para código Lambda
 show_progress 3 10 "Creando Bucket S3 para Código Lambda"
