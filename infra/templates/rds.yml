@@ -74,16 +74,16 @@ Outputs:
     Description: ARN del secreto con las credenciales de Aurora
     Value: !Ref DBCredentialsSecret
     Export:
-      Name: EventApp-RDSSecretArn
+      Name: !Sub "${AWS::StackName}-RDSSecretArn"
 
   RDSClusterEndpoint:
     Description: Endpoint del cluster Aurora
     Value: !GetAtt EventDBCluster.Endpoint.Address
     Export:
-      Name: EventApp-RDSClusterEndpoint
+      Name: !Sub "${AWS::StackName}-RDSClusterEndpoint"
 
   RDSSecurityGroupId:
     Description: ID del Security Group de Aurora
     Value: !Ref RDSSecurityGroup
     Export:
-      Name: EventApp-RDSSecurityGroupId
+      Name: !Sub "${AWS::StackName}-RDSSecurityGroupId"
