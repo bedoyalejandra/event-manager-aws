@@ -184,8 +184,8 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-ApiGatewayRootResourceId"
 
-  ApiEndpoint:
+  ApiGatewayUrl:
     Description: API Gateway endpoint URL
     Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
     Export:
-      Name: !Sub "${AWS::StackName}-ApiEndpoint"
+      Name: !Sub "${AWS::StackName}-ApiGatewayUrl"
