@@ -14,7 +14,7 @@ exports.handler = async (event) => {
 
     // 2. Conexión a la DB
     connection = await mysql.createConnection({
-      host: creds.host,
+      host: process.env.DB_HOST,
       user: creds.username,
       password: creds.password,
       database: process.env.DB_NAME,

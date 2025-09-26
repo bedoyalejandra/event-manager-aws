@@ -1,0 +1,19 @@
+{
+  "name": "event-manager-lambda-functions",
+  "version": "1.0.0",
+  "description": "Lambda functions for Event Manager AWS application",
+  "main": "index.js",
+  "scripts": {
+    "install-deps": "npm install",
+    "package": "zip -r lambda-functions.zip . -x '*.zip' 'package-lock.json'"
+  },
+  "dependencies": {
+    "mysql2": "^3.6.0",
+    "aws-sdk": "^2.1490.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Event Manager Team",
+  "license": "MIT"
+}
