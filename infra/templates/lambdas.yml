@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Lambda para crear eventos en Event Manager DB
+Description: Lambda functions for Event Manager application
 
 Parameters:
   VpcId:
@@ -7,7 +7,8 @@ Parameters:
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
   RDSSecretArn:
-    Type: String  # Credenciales en Secrets Manager
+    Type: String
+    Description: ARN of the RDS credentials in Secrets Manager
   SecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
   LambdaCodeBucket:
@@ -27,31 +28,11 @@ Parameters:
     Description: Environment name
 
 Resources:
-  CreateEventLambda:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: CreateEventLambda
-      Runtime: nodejs18.x
-      Handler: src/create-event/index.handler
-      Code:
-        S3Bucket: !Ref LambdaCodeBucket
-        S3Key: !Ref LambdaCodeKey
-      MemorySize: 256
-      Timeout: 10
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
-      Environment:
-        Variables:
-          RDS_SECRET_ARN: !Ref RDSSecretArn
-          DB_NAME: EventManagerDB
-      Role: !GetAtt LambdaExecutionRole.Arn
-
+  # Lambda Execution Role
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: CreateEventLambdaRole
+      RoleName: !Sub "EventManagerLambdaRole-${Environment}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -63,3 +44,422 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
         - arn:aws:iam::aws:policy/SecretsManagerReadWrite
         - arn:aws:iam::aws:policy/AmazonRDSFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+
+  # 1. Create Event Lambda
+  CreateEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "CreateEventLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/create-event/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 2. Delete Event Lambda
+  DeleteEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "DeleteEventLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/delete-event/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 3. Update Event Lambda
+  UpdateEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "UpdateEventLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/update-event/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 4. Disable Event Lambda
+  DisableEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "DisableEventLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/disable-event/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 5. Get Active Events Lambda
+  GetActiveEventsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "GetActiveEventsLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/get-active-events/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 6. Generate Report Lambda
+  GenerateReportLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "GenerateReportLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/generate-report/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 512
+      Timeout: 300
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          REPORTS_BUCKET: !Ref ReportsBucket
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 7. Get Report Lambda
+  GetReportLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "GetReportLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/get-report/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          REPORTS_BUCKET: !Ref ReportsBucket
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 8. Process Report Data Lambda
+  ProcessReportDataLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "ProcessReportDataLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/process-report-data/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 512
+      Timeout: 300
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          REPORTS_BUCKET: !Ref ReportsBucket
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 9. Send Email Lambda
+  SendEmailLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "SendEmailLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/send-email/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 10. Send Event Reminder Lambda
+  SendEventReminderLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "SendEventReminderLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/send-event-reminder/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          EMAIL_QUEUE: !Ref EmailQueue
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 11. Post Event Assistance Lambda
+  PostEventAssistanceLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "PostEventAssistanceLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/post-event-assistance/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          EMAIL_QUEUE: !Ref EmailQueue
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # 12. Init DB Lambda
+  InitDBLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "InitDBLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: src/init-db/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 300
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+Outputs:
+  # Lambda Function ARNs
+  CreateEventLambdaArn:
+    Description: ARN of the Create Event Lambda function
+    Value: !GetAtt CreateEventLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-CreateEventLambdaArn"
+
+  DeleteEventLambdaArn:
+    Description: ARN of the Delete Event Lambda function
+    Value: !GetAtt DeleteEventLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DeleteEventLambdaArn"
+
+  UpdateEventLambdaArn:
+    Description: ARN of the Update Event Lambda function
+    Value: !GetAtt UpdateEventLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UpdateEventLambdaArn"
+
+  DisableEventLambdaArn:
+    Description: ARN of the Disable Event Lambda function
+    Value: !GetAtt DisableEventLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DisableEventLambdaArn"
+
+  GetActiveEventsLambdaArn:
+    Description: ARN of the Get Active Events Lambda function
+    Value: !GetAtt GetActiveEventsLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GetActiveEventsLambdaArn"
+
+  GenerateReportLambdaArn:
+    Description: ARN of the Generate Report Lambda function
+    Value: !GetAtt GenerateReportLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GenerateReportLambdaArn"
+
+  GetReportLambdaArn:
+    Description: ARN of the Get Report Lambda function
+    Value: !GetAtt GetReportLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GetReportLambdaArn"
+
+  ProcessReportDataLambdaArn:
+    Description: ARN of the Process Report Data Lambda function
+    Value: !GetAtt ProcessReportDataLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ProcessReportDataLambdaArn"
+
+  SendEmailLambdaArn:
+    Description: ARN of the Send Email Lambda function
+    Value: !GetAtt SendEmailLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SendEmailLambdaArn"
+
+  SendEventReminderLambdaArn:
+    Description: ARN of the Send Event Reminder Lambda function
+    Value: !GetAtt SendEventReminderLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SendEventReminderLambdaArn"
+
+  PostEventAssistanceLambdaArn:
+    Description: ARN of the Post Event Assistance Lambda function
+    Value: !GetAtt PostEventAssistanceLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaArn"
+
+  InitDBLambdaArn:
+    Description: ARN of the Init DB Lambda function
+    Value: !GetAtt InitDBLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-InitDBLambdaArn"
+
+  # Lambda Function Names
+  CreateEventLambdaName:
+    Description: Name of the Create Event Lambda function
+    Value: !Ref CreateEventLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-CreateEventLambdaName"
+
+  DeleteEventLambdaName:
+    Description: Name of the Delete Event Lambda function
+    Value: !Ref DeleteEventLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-DeleteEventLambdaName"
+
+  UpdateEventLambdaName:
+    Description: Name of the Update Event Lambda function
+    Value: !Ref UpdateEventLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-UpdateEventLambdaName"
+
+  DisableEventLambdaName:
+    Description: Name of the Disable Event Lambda function
+    Value: !Ref DisableEventLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-DisableEventLambdaName"
+
+  GetActiveEventsLambdaName:
+    Description: Name of the Get Active Events Lambda function
+    Value: !Ref GetActiveEventsLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-GetActiveEventsLambdaName"
+
+  GenerateReportLambdaName:
+    Description: Name of the Generate Report Lambda function
+    Value: !Ref GenerateReportLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-GenerateReportLambdaName"
+
+  GetReportLambdaName:
+    Description: Name of the Get Report Lambda function
+    Value: !Ref GetReportLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-GetReportLambdaName"
+
+  ProcessReportDataLambdaName:
+    Description: Name of the Process Report Data Lambda function
+    Value: !Ref ProcessReportDataLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-ProcessReportDataLambdaName"
+
+  SendEmailLambdaName:
+    Description: Name of the Send Email Lambda function
+    Value: !Ref SendEmailLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-SendEmailLambdaName"
+
+  SendEventReminderLambdaName:
+    Description: Name of the Send Event Reminder Lambda function
+    Value: !Ref SendEventReminderLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-SendEventReminderLambdaName"
+
+  PostEventAssistanceLambdaName:
+    Description: Name of the Post Event Assistance Lambda function
+    Value: !Ref PostEventAssistanceLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaName"
+
+  InitDBLambdaName:
+    Description: Name of the Init DB Lambda function
+    Value: !Ref InitDBLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-InitDBLambdaName"
