@@ -144,7 +144,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
-      ConfigurationSetName: !If [CreateNewSESResources, !Ref SESConfigurationSet, !Ref ExistingSESConfigurationSet]
+      ConfigurationSetName: !Ref SESConfigurationSet
       EventDestination:
         Name: !Sub 'event-manager-event-destination-${Environment}'
         Enabled: true
