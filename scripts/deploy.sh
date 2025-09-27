@@ -166,17 +166,149 @@ log_info "Verificando que los templates se subieron correctamente..."
 aws s3 ls s3://$LAMBDA_BUCKET/templates/
 
 log_success "Templates de nested stacks subidos correctamente"
-
 # PASO 7: Validar template principal
 show_progress 7 10 "Validando Template Principal"
 
 validate_template infra/master-template.yml || exit 1
 
-# PASO 8: Desplegar infraestructura principal
-show_progress 8 10 "Desplegando Infraestructura Principal"
+# PASO 8: Creando Base de Datos RDS
+show_progress 8 10 "Creando Base de Datos MySQL"
+
+log_info "Verificando si la base de datos ya existe..."
+if aws rds describe-db-instances --db-instance-identifier event-manager-db-$ENVIRONMENT >/dev/null 2>&1; then
+    log_warning "Base de datos ya existe: event-manager-db-$ENVIRONMENT"
+    DB_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier event-manager-db-$ENVIRONMENT --query 'DBInstances[0].Endpoint.Address' --output text)
+    log_success "Usando base de datos existente: $DB_ENDPOINT"
+else
+    log_info "Creando security group para RDS..."
+    if ! aws ec2 describe-security-groups --group-names event-manager-rds-sg >/dev/null 2>&1; then
+        SG_ID=$(aws ec2 create-security-group \
+            --group-name event-manager-rds-sg \
+            --description "Security group for Event Manager RDS MySQL" \
+            --query 'GroupId' --output text)
+        
+        log_info "Agregando regla de acceso MySQL al security group..."
+        aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 3306 \
+            --cidr 0.0.0.0/0
+    else
+        SG_ID=$(aws ec2 describe-security-groups --group-names event-manager-rds-sg --query 'SecurityGroups[0].GroupId' --output text)
+    fi
+
+    log_info "Creando instancia RDS MySQL..."
+    aws rds create-db-instance \
+        --db-instance-identifier event-manager-db-$ENVIRONMENT \
+        --db-instance-class db.t3.micro \
+        --engine mysql \
+        --engine-version 8.0.43 \
+        --master-username $DB_USERNAME \
+        --master-user-password EventManager123! \
+        --allocated-storage 20 \
+        --db-name EventManagerDB \
+        --vpc-security-group-ids $SG_ID \
+        --publicly-accessible \
+        --no-multi-az \
+        --storage-type gp2 \
+        --backup-retention-period 0 \
+        --tags Key=Name,Value=event-manager-db-$ENVIRONMENT Key=Environment,Value=$ENVIRONMENT
+
+    log_info "Esperando que la base de datos esté disponible..."
+    aws rds wait db-instance-available --db-instance-identifier event-manager-db-$ENVIRONMENT
+    
+    DB_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier event-manager-db-$ENVIRONMENT --query 'DBInstances[0].Endpoint.Address' --output text)
+    log_success "Base de datos creada exitosamente: $DB_ENDPOINT"
+fi
+
+log_info "Creando secret en Secrets Manager para credenciales de la base de datos..."
+SECRET_NAME="event-app/db-credentials-$ENVIRONMENT-$AWS_ACCOUNT_ID"
+
+# Verificar si el secret ya existe
+if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1; then
+    log_warning "Secret ya existe, actualizando credenciales..."
+    aws secretsmanager update-secret \
+        --secret-id "$SECRET_NAME" \
+        --secret-string "{\"username\":\"$DB_USERNAME\",\"password\":\"EventManager123!\"}"
+else
+    log_info "Creando nuevo secret con credenciales de la base de datos..."
+    aws secretsmanager create-secret \
+        --name "$SECRET_NAME" \
+        --description "Credenciales para base de datos Event Manager" \
+        --secret-string "{\"username\":\"$DB_USERNAME\",\"password\":\"EventManager123!\"}" \
+        --tags Key=Environment,Value=$ENVIRONMENT Key=Name,Value=event-manager-db-secret
+fi
+
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --query 'ARN' --output text)
+log_success "Secret creado/actualizado exitosamente: $SECRET_ARN"
+
+# PASO 8.5: Desplegando InitDB Stack para crear tablas
+show_progress "8.5" 11 "Creando InitDB Lambda Function"
+
+log_info "Desplegando InitDB stack para crear las tablas..."
+aws cloudformation deploy \
+    --template-file infra/templates/initdb.yml \
+    --stack-name event-manager-initdb \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --parameter-overrides \
+        RDSSecretArn=$SECRET_ARN \
+        RDSClusterEndpoint=$DB_ENDPOINT \
+        LambdaCodeBucket=$LAMBDA_BUCKET \
+        LambdaCodeKey=lambda-functions.zip \
+        Environment=$ENVIRONMENT
+
+log_success "InitDB stack desplegado correctamente"
+
+# PASO 8.6: Ejecutar InitDB Lambda para crear tablas
+show_progress "8.6" 11 "Inicializando Base de Datos"
+
+# Obtener el nombre de la función desde el stack
+INIT_LAMBDA_NAME=$(aws cloudformation describe-stacks \
+    --stack-name event-manager-initdb \
+    --query 'Stacks[0].Outputs[?OutputKey==`InitDBLambdaName`].OutputValue' \
+    --output text)
+
+log_info "Ejecutando función InitDB para crear las tablas..."
+log_info "Nombre de función: $INIT_LAMBDA_NAME"
+
+INIT_RESPONSE=$(aws lambda invoke \
+    --function-name "$INIT_LAMBDA_NAME" \
+    --log-type Tail \
+    --payload '{}' \
+    /tmp/init-db-response.json 2>/dev/null || echo "FAILED")
+
+if [[ "$INIT_RESPONSE" == "FAILED" ]]; then
+    log_error "Error al ejecutar la función InitDB"
+    # Mostrar logs para debugging
+    log_info "Verificando si la función existe..."
+    aws lambda get-function --function-name "$INIT_LAMBDA_NAME" || {
+        log_error "La función no existe. Verificando el stack InitDB..."
+        aws cloudformation describe-stacks --stack-name event-manager-initdb
+    }
+    exit 1
+fi
+
+# Verificar respuesta
+if [[ -f "/tmp/init-db-response.json" ]]; then
+    INIT_RESULT=$(cat /tmp/init-db-response.json)
+    echo "$INIT_RESULT" | grep -q '"statusCode":200' && {
+        log_success "✅ Base de datos inicializada correctamente - tablas creadas"
+    } || {
+        log_error "❌ Error al inicializar la base de datos:"
+        echo "$INIT_RESULT" | jq . || echo "$INIT_RESULT"
+        exit 1
+    }
+else
+    log_error "No se pudo obtener respuesta de la función InitDB"
+    exit 1
+fi
+
+# PASO 9: Desplegando stack principal
+show_progress 9 11 "Desplegando Infraestructura Principal"
 
 log_warning "Este paso puede tomar 15-20 minutos. Por favor, sé paciente..."
 log_info "Desplegando stack principal con todos los servicios..."
+log_info "Usando endpoint de base de datos: $DB_ENDPOINT"
 
 aws cloudformation deploy \
     --template-file infra/master-template.yml \
@@ -185,18 +317,18 @@ aws cloudformation deploy \
     --parameter-overrides \
         Environment=$ENVIRONMENT \
         DBUsername=$DB_USERNAME \
-        S3LambdaBucket=$LAMBDA_BUCKET \
+        S3LambdaBucket=$LAMBDA_BUCKET_NAME \
         LambdaCodeKey=lambda-functions.zip \
         CreateS3Buckets=false \
-        ExistingLambdaCodeBucket=$LAMBDA_BUCKET \
+        ExistingLambdaCodeBucket=$LAMBDA_BUCKET_NAME \
         ExistingReportsBucket=$REPORTS_BUCKET_NAME \
         CreateSESResources=false \
-        ExistingSESConfigurationSet=event-manager-config-set-$ENVIRONMENT
+        ExistingSESConfigurationSet=event-manager-config-set-$ENVIRONMENT \
+        DBEndpoint=$DB_ENDPOINT \
+        RDSSecretArn=$SECRET_ARN
 
-log_success "Stack principal desplegado correctamente"
-
-# PASO 9: Verificar el despliegue
-show_progress 9 10 "Verificando el Despliegue"
+# PASO 10: Verificar el despliegue
+show_progress 10 11 "Verificando el Despliegue"
 
 log_info "Verificando estado del stack principal..."
 aws cloudformation describe-stacks --stack-name event-manager --query 'Stacks[0].StackStatus' --output text
@@ -212,8 +344,8 @@ log_info "Listando todos los stacks creados..."
 show_header "STACKS CREADOS" $YELLOW
 list_event_manager_stacks
 
-# PASO 10: Verificar funciones Lambda
-show_progress 10 10 "Verificando Funciones Lambda"
+# PASO 11: Verificar funciones Lambda
+show_progress 11 11 "Verificando Funciones Lambda"
 
 log_info "Listando funciones Lambda creadas..."
 show_header "FUNCIONES LAMBDA CREADAS" $YELLOW
@@ -256,7 +388,7 @@ echo "# Ver logs de una función Lambda:"
 echo "aws logs filter-log-events --log-group-name /aws/lambda/event-manager-CreateEventLambda --start-time \$(date -d '1 hour ago' +%s)000"
 echo ""
 echo "# Ver credenciales de la base de datos:"
-echo "aws secretsmanager get-secret-value --secret-id event-app/db-credentials --query SecretString --output text | jq ."
+echo "aws secretsmanager get-secret-value --secret-id $SECRET_ARN --query SecretString --output text | jq ."
 echo ""
 echo "# Eliminar todo (CUIDADO - esto borra todos los datos):"
 echo "./cleanup.sh"

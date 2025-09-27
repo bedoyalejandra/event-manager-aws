@@ -1,13 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Aurora Serverless v2 para Event Manager App
+Description: Simple MySQL RDS Instance for Event Manager App
 
 Parameters:
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: VPC donde se desplegará Aurora
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnets privadas para Aurora
   DBUsername:
     Type: String
     Default: event_admin
@@ -25,60 +19,37 @@ Parameters:
 
 Resources:
   ############################################
-  # Security Group para Aurora
+  # DB Subnet Group using default VPC subnets
+  ############################################
+  EventDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for MySQL using default VPC
+      SubnetIds:
+        - subnet-00d0b1c092455f39b  # us-west-2a
+        - subnet-050b4588773287626  # us-west-2b
+      Tags:
+        - Key: Name
+          Value: !Sub 'event-manager-subnet-group-${Environment}'
+
+  ############################################
+  # Security Group for MySQL (Default VPC)
   ############################################
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security Group para Aurora Serverless
-      VpcId: !Ref VpcId
+      GroupDescription: Security Group for MySQL RDS
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+          Description: Allow MySQL access from internet for Lambda functions
       Tags:
         - Key: Name
           Value: !Sub 'event-manager-rds-sg-${Environment}'
         - Key: Environment
           Value: !Ref Environment
-
-  # Regla de ingreso separada para evitar dependencia circular
-  RDSSecurityGroupIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref RDSSecurityGroup
-      IpProtocol: tcp
-      FromPort: 3306
-      ToPort: 3306
-      SourceSecurityGroupId: !Ref RDSSecurityGroup
-      Description: Allow MySQL access from Lambda functions in same security group
-
-  # Regla adicional para permitir acceso desde subnets públicas (donde estarán las Lambdas)
-  RDSSecurityGroupIngressFromPublicSubnets:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref RDSSecurityGroup
-      IpProtocol: tcp
-      FromPort: 3306
-      ToPort: 3306
-      CidrIp: 10.0.0.0/16
-      Description: Allow MySQL access from VPC CIDR (includes public subnets for Lambda functions)
-
-  # Regla para permitir acceso desde Lambda functions fuera del VPC (internet)
-  RDSSecurityGroupIngressFromInternet:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref RDSSecurityGroup
-      IpProtocol: tcp
-      FromPort: 3306
-      ToPort: 3306
-      CidrIp: 0.0.0.0/0
-      Description: Allow MySQL access from Lambda functions outside VPC (temporary for testing)
-
-  ############################################
-  # Subnet Group para Aurora
-  ############################################
-  EventDBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: Subnet group para Aurora
-      SubnetIds: !Ref SubnetIds
 
   ############################################
   # Secret en Secrets Manager
@@ -86,8 +57,8 @@ Resources:
   DBCredentialsSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: event-app/db-credentials
-      Description: Credenciales para Aurora EventManagerDB
+      Name: !Sub 'event-app/db-credentials-${Environment}-${AWS::AccountId}'
+      Description: Credenciales para MySQL EventManagerDB
       GenerateSecretString:
         SecretStringTemplate: !Sub '{"username":"${DBUsername}"}'
         GenerateStringKey: password
@@ -95,54 +66,47 @@ Resources:
         ExcludePunctuation: true
 
   ############################################
-  # Aurora Serverless Cluster
-  ############################################
-  EventDBCluster:
-    Type: AWS::RDS::DBCluster
-    Properties:
-      Engine: aurora-mysql
-      EngineMode: provisioned
-      DatabaseName: EventManagerDB
-      MasterUsername: !Sub "{{resolve:secretsmanager:${DBCredentialsSecret}::username}}"
-      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DBCredentialsSecret}::password}}"
-      DBSubnetGroupName: !Ref EventDBSubnetGroup
-      VpcSecurityGroupIds:
-        - !Ref RDSSecurityGroup
-      ServerlessV2ScalingConfiguration:
-        MinCapacity: 0.5
-        MaxCapacity: 2
-
-  ############################################
-  # Aurora DB Instance (required for Serverless v2)
+  # Simple MySQL RDS Instance
   ############################################
   EventDBInstance:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceClass: db.serverless
-      DBClusterIdentifier: !Ref EventDBCluster
-      Engine: aurora-mysql
-      PubliclyAccessible: false
+      DBInstanceIdentifier: !Sub 'event-manager-db-${Environment}'
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      EngineVersion: 8.0.43
+      DBName: EventManagerDB
+      MasterUsername: !Sub "{{resolve:secretsmanager:${DBCredentialsSecret}::username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DBCredentialsSecret}::password}}"
+      AllocatedStorage: 20
+      DBSubnetGroupName: !Ref EventDBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      PubliclyAccessible: true
+      BackupRetentionPeriod: 0  # No backups for dev
+      MultiAZ: false
+      StorageType: gp2
       Tags:
         - Key: Name
-          Value: !Sub 'event-manager-db-instance-${Environment}'
+          Value: !Sub 'event-manager-db-${Environment}'
         - Key: Environment
           Value: !Ref Environment
 
 Outputs:
   RDSSecretArn:
-    Description: ARN del secreto con las credenciales de Aurora
+    Description: ARN del secreto con las credenciales de MySQL
     Value: !Ref DBCredentialsSecret
     Export:
       Name: !Sub "${AWS::StackName}-RDSSecretArn"
 
   RDSClusterEndpoint:
-    Description: Endpoint del cluster Aurora
-    Value: !GetAtt EventDBCluster.Endpoint.Address
+    Description: Endpoint de la instancia MySQL
+    Value: !GetAtt EventDBInstance.Endpoint.Address
     Export:
       Name: !Sub "${AWS::StackName}-RDSClusterEndpoint"
 
   RDSSecurityGroupId:
-    Description: ID del Security Group de Aurora
+    Description: ID del Security Group de MySQL
     Value: !Ref RDSSecurityGroup
     Export:
       Name: !Sub "${AWS::StackName}-RDSSecurityGroupId"

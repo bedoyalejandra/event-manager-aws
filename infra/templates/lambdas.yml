@@ -5,6 +5,9 @@ Parameters:
   RDSSecretArn:
     Type: String
     Description: ARN of the RDS credentials in Secrets Manager
+  RDSClusterEndpoint:
+    Type: String
+    Description: Aurora cluster endpoint
   LambdaCodeBucket:
     Type: String
   LambdaCodeKey:
@@ -58,7 +61,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
-          DB_HOST: event-manager-rdsstack-18fa2t4x9403-eventdbcluster-uoxnliylprdr.cluster-cumblbbkv5mp.us-west-2.rds.amazonaws.com
+          DB_HOST: !Ref RDSClusterEndpoint
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
@@ -253,24 +256,6 @@ Resources:
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
-  # 12. Init DB Lambda
-  InitDBLambda:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub "InitDBLambda-${Environment}"
-      Runtime: nodejs18.x
-      Handler: init-db/index.handler
-      Code:
-        S3Bucket: !Ref LambdaCodeBucket
-        S3Key: !Ref LambdaCodeKey
-      MemorySize: 256
-      Timeout: 300
-      Environment:
-        Variables:
-          RDS_SECRET_ARN: !Ref RDSSecretArn
-          DB_NAME: EventManagerDB
-          ENVIRONMENT: !Ref Environment
-      Role: !GetAtt LambdaExecutionRole.Arn
 
 Outputs:
   # Lambda Function ARNs
@@ -340,12 +325,6 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaArn"
 
-  InitDBLambdaArn:
-    Description: ARN of the Init DB Lambda function
-    Value: !GetAtt InitDBLambda.Arn
-    Export:
-      Name: !Sub "${AWS::StackName}-InitDBLambdaArn"
-
   # Lambda Function Names
   CreateEventLambdaName:
     Description: Name of the Create Event Lambda function
@@ -413,8 +392,3 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaName"
 
-  InitDBLambdaName:
-    Description: Name of the Init DB Lambda function
-    Value: !Ref InitDBLambda
-    Export:
-      Name: !Sub "${AWS::StackName}-InitDBLambdaName"

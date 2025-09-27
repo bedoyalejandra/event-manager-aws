@@ -2,22 +2,41 @@ const mysql = require("mysql2/promise");
 const AWS = require("aws-sdk");
 const secretsManager = new AWS.SecretsManager();
 
-exports.handler = async () => {
+exports.handler = async (event) => {
   let connection;
   try {
+    console.log("Starting database initialization...");
+    
     const secretArn = process.env.RDS_SECRET_ARN;
+    const dbHost = process.env.DB_HOST;
+    const dbName = process.env.DB_NAME;
+    
+    console.log("Environment variables:", {
+      secretArn: secretArn ? "Set" : "Missing",
+      dbHost: dbHost ? "Set" : "Missing", 
+      dbName: dbName ? "Set" : "Missing"
+    });
+    
+    if (!secretArn || !dbHost || !dbName) {
+      throw new Error("Missing required environment variables");
+    }
+    
+    console.log("Getting database credentials from Secrets Manager...");
     const secretValue = await secretsManager
       .getSecretValue({ SecretId: secretArn })
       .promise();
     const creds = JSON.parse(secretValue.SecretString);
+    
+    console.log("Connecting to database:", { host: dbHost, user: creds.username });
 
     connection = await mysql.createConnection({
-      host: creds.host,
+      host: dbHost,
       user: creds.username,
       password: creds.password,
-      database: process.env.DB_NAME,
+      database: dbName,
     });
 
+    console.log("Creating events table...");
     const ddl = `
       CREATE TABLE IF NOT EXISTS events (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -26,20 +45,68 @@ exports.handler = async () => {
         start_date DATETIME NOT NULL,
         duration INT,
         capacity INT NOT NULL,
-        status VARCHAR(20) DEFAULT 'ACTIVE'
+        status VARCHAR(20) DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       );
-      CREATE INDEX IF NOT EXISTS idx_status ON events(status);
-      CREATE INDEX IF NOT EXISTS idx_start_date ON events(start_date);
     `;
 
-    await connection.query(ddl);
-    console.log("Tabla 'events' creada/verificada exitosamente.");
+    await connection.execute(ddl);
+    console.log("✅ Events table created/verified successfully");
 
-    return { statusCode: 200, body: "Tabla creada/verificada" };
+    console.log("Creating database indexes...");
+    const indexes = [
+      { name: "idx_status", sql: "CREATE INDEX idx_status ON events(status)" },
+      { name: "idx_start_date", sql: "CREATE INDEX idx_start_date ON events(start_date)" },
+      { name: "idx_created_at", sql: "CREATE INDEX idx_created_at ON events(created_at)" }
+    ];
+
+    for (const index of indexes) {
+      try {
+        await connection.execute(index.sql);
+        console.log(`✅ Created index: ${index.name}`);
+      } catch (indexErr) {
+        if (indexErr.code === 'ER_DUP_KEYNAME') {
+          console.log(`ℹ️ Index ${index.name} already exists, skipping`);
+        } else {
+          console.error(`⚠️ Error creating index ${index.name}:`, indexErr.message);
+        }
+      }
+    }
+    console.log("✅ Database indexes processing completed");
+
+    // Test the connection by doing a simple query
+    console.log("Testing database connection...");
+    const [rows] = await connection.execute("SELECT COUNT(*) as count FROM events");
+    console.log(`✅ Database test successful. Current events count: ${rows[0].count}`);
+
+    return { 
+      statusCode: 200, 
+      body: JSON.stringify({
+        message: "Database initialized successfully",
+        tablesCreated: ["events"],
+        indexesCreated: 3,
+        currentEventsCount: rows[0].count
+      })
+    };
   } catch (err) {
-    console.error("Error creando tabla:", err);
-    return { statusCode: 500, body: JSON.stringify({ message: err.message, stack: err.stack }) };
+    console.error("❌ Error initializing database:", err);
+    return { 
+      statusCode: 500, 
+      body: JSON.stringify({ 
+        error: "Database initialization failed",
+        message: err.message, 
+        code: err.code || 'UNKNOWN_ERROR'
+      }) 
+    };
   } finally {
-    if (connection) await connection.end();
+    if (connection) {
+      try {
+        await connection.end();
+        console.log("Database connection closed");
+      } catch (closeErr) {
+        console.error("Error closing database connection:", closeErr);
+      }
+    }
   }
 };

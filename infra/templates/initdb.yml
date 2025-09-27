@@ -20,14 +20,14 @@ Resources:
   InitDBLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: InitDBLambda
+      FunctionName: !Sub "InitDBLambda-${Environment}"
       Runtime: nodejs18.x
       Handler: init-db/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
-      Timeout: 20
+      Timeout: 30
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -38,7 +38,7 @@ Resources:
   InitDBRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: InitDBLambdaRole
+      RoleName: !Sub "InitDBLambdaRole-${Environment}-${AWS::AccountId}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -47,7 +47,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: InitDBAccess
           PolicyDocument:
@@ -61,8 +61,18 @@ Resources:
                 Action:
                   - rds-db:connect
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
 
 Outputs:
   InitDBLambdaName:
     Description: Nombre de la Lambda de inicialización de la DB
     Value: !Ref InitDBLambda
+  
+  InitDBLambdaArn:
+    Description: ARN de la Lambda de inicialización de la DB
+    Value: !GetAtt InitDBLambda.Arn
