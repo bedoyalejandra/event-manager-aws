@@ -174,6 +174,41 @@ validate_template infra/master-template.yml || exit 1
 # PASO 8: Creando Base de Datos RDS
 show_progress 8 10 "Creando Base de Datos MySQL"
 
+# Función para mostrar progreso mientras espera RDS
+show_rds_wait_progress() {
+    local db_id=$1
+    local dots=""
+    local count=0
+    
+    while true; do
+        # Verificar estado de la base de datos
+        local status=$(aws rds describe-db-instances --db-instance-identifier "$db_id" --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "unknown")
+        
+        if [[ "$status" == "available" ]]; then
+            echo -e "\n${GREEN}✅ Base de datos disponible${NC}"
+            break
+        elif [[ "$status" == "failed" || "$status" == "unknown" ]]; then
+            echo -e "\n${RED}❌ Error en la creación de la base de datos. Estado: $status${NC}"
+            exit 1
+        fi
+        
+        # Mostrar progreso visual
+        dots+="."
+        if [[ ${#dots} -gt 3 ]]; then
+            dots=""
+        fi
+        
+        printf "\r${BLUE}⏳ Esperando que RDS esté disponible$dots (Estado: $status)${NC}"
+        sleep 10
+        ((count++))
+        
+        # Mostrar mensaje cada minuto
+        if [[ $((count % 6)) -eq 0 ]]; then
+            echo -e "\n${YELLOW}⏰ Tiempo transcurrido: $((count / 6)) minuto(s)${NC}"
+        fi
+    done
+}
+
 log_info "Verificando si la base de datos ya existe..."
 if aws rds describe-db-instances --db-instance-identifier event-manager-db-$ENVIRONMENT >/dev/null 2>&1; then
     log_warning "Base de datos ya existe: event-manager-db-$ENVIRONMENT"
@@ -198,7 +233,7 @@ else
     fi
 
     log_info "Creando instancia RDS MySQL..."
-    aws rds create-db-instance \
+    RDS_CREATE_RESULT=$(aws rds create-db-instance \
         --db-instance-identifier event-manager-db-$ENVIRONMENT \
         --db-instance-class db.t3.micro \
         --engine mysql \
@@ -212,10 +247,17 @@ else
         --no-multi-az \
         --storage-type gp2 \
         --backup-retention-period 0 \
-        --tags Key=Name,Value=event-manager-db-$ENVIRONMENT Key=Environment,Value=$ENVIRONMENT
+        --tags Key=Name,Value=event-manager-db-$ENVIRONMENT Key=Environment,Value=$ENVIRONMENT 2>/dev/null)
+    
+    if [[ $? -eq 0 ]]; then
+        log_success "✅ Solicitud de creación de RDS enviada exitosamente"
+    else
+        log_error "❌ Error al crear la instancia RDS"
+        exit 1
+    fi
 
-    log_info "Esperando que la base de datos esté disponible..."
-    aws rds wait db-instance-available --db-instance-identifier event-manager-db-$ENVIRONMENT
+    log_info "Esperando que la base de datos esté disponible (esto puede tomar 5-10 minutos)..."
+    show_rds_wait_progress "event-manager-db-$ENVIRONMENT"
     
     DB_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier event-manager-db-$ENVIRONMENT --query 'DBInstances[0].Endpoint.Address' --output text)
     log_success "Base de datos creada exitosamente: $DB_ENDPOINT"
