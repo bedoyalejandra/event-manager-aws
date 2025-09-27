@@ -76,10 +76,22 @@ if !errorlevel! neq 0 (
 echo [INFO] Creating ZIP with Lambda functions...
 if exist "lambda-functions.zip" del "lambda-functions.zip"
 
-REM Use PowerShell to create ZIP (more reliable than batch)
-powershell -command "Compress-Archive -Path (Get-ChildItem -Exclude '*.zip','package-lock.json') -DestinationPath 'lambda-functions.zip' -Force"
+REM Use PowerShell with improved error handling for ZIP creation
+powershell -command "try { $compress = @{ Path = Get-ChildItem -Exclude '*.zip', 'package-lock.json' -Recurse | ForEach-Object { $_.FullName }; DestinationPath = 'lambda-functions.zip'; CompressionLevel = 'Optimal' }; Compress-Archive @compress; Write-Host '[SUCCESS] ZIP created successfully' } catch { Write-Host '[ERROR] Failed to create ZIP:' $_.Exception.Message; exit 1 }"
 if !errorlevel! neq 0 (
     echo [ERROR] Failed to create ZIP file
+    pause
+    exit /b 1
+)
+
+REM Verify ZIP was created and get size
+powershell -command "if (Test-Path 'lambda-functions.zip') { $size = [math]::Round((Get-Item 'lambda-functions.zip').Length / 1MB, 2); Write-Host '[INFO] ZIP created successfully. Size:' $size 'MB' } else { Write-Host '[ERROR] ZIP file not found'; exit 1 }"
+
+REM Verify dependencies are included in ZIP
+echo [INFO] Verifying dependencies are included...
+powershell -command "try { $zipFile = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path 'lambda-functions.zip')); $hasMySQL = $zipFile.Entries | Where-Object { $_.FullName -like '*node_modules/mysql2*' }; $zipFile.Dispose(); if ($hasMySQL) { Write-Host '[SUCCESS] mysql2 dependencies included in ZIP' } else { Write-Host '[ERROR] mysql2 dependencies NOT found in ZIP'; exit 1 } } catch { Write-Host '[ERROR] Could not verify ZIP contents:' $_.Exception.Message; exit 1 }"
+if !errorlevel! neq 0 (
+    echo [ERROR] ZIP verification failed
     pause
     exit /b 1
 )
