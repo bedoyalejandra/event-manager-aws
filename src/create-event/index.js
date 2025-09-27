@@ -30,16 +30,38 @@ exports.handler = async (event) => {
     });
     
     const connection = await mysql.createConnection({
-      host: 'event-manager-db-dev.cumblbbkv5mp.us-west-2.rds.amazonaws.com',
-      user: 'event_admin',
-      password: 'EventManager123!',
-      database: 'EventManagerDB',
+      host: process.env.DB_HOST,
+      user: creds.username,
+      password: creds.password,
+      database: process.env.DB_NAME,
       connectTimeout: 10000,
     });
     console.log("✅ Database connection established");
 
     // 3. Parsear body desde API Gateway
-    const { name, description, start_date, duration, capacity } = body;
+    console.log("📋 Parsing request body...");
+    console.log("Event received:", JSON.stringify(event, null, 2));
+    
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Request body is required" }),
+      };
+    }
+    
+    let bodyData;
+    try {
+      bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+    } catch (parseError) {
+      console.error("❌ Error parsing JSON body:", parseError);
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Invalid JSON format in request body" }),
+      };
+    }
+    
+    const { name, description, start_date, duration, capacity } = bodyData;
+    console.log("✅ Parsed event data:", bodyData);
 
     if (!name || !start_date || !capacity) {
       return {
