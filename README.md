@@ -84,7 +84,14 @@ event-manager-aws/
 
 ### Despliegue Manual
 
+#### 🐧 Linux/macOS (usando bash)
+
 ```bash
+# Usar script automatizado (recomendado)
+./scripts/deploy.sh
+
+# O despliegue manual paso a paso:
+
 # 1. Empaquetar funciones Lambda
 zip -r lambda-functions.zip src/
 
@@ -114,12 +121,36 @@ aws cloudformation deploy \
     DBUsername=event_admin \
     S3LambdaBucket=$LAMBDA_BUCKET \
     LambdaCodeKey=lambda-functions.zip
-
-# 🎉 TODO ES AUTOMÁTICO:
-# - Buckets S3 (código Lambda + reportes)
-# - Contraseña de base de datos (Secrets Manager)
-# - VPC, RDS, Cognito, API Gateway, etc.
 ```
+
+#### 🪟 Windows
+
+```powershell
+# Opción 1: PowerShell (recomendado)
+.\scripts\deploy.ps1
+
+# Opción 2: Batch file
+.\scripts\deploy.bat
+
+# Opción 3: WSL
+./scripts/deploy.sh
+```
+
+**Para instrucciones detalladas de Windows, ver:** [`WINDOWS_DEPLOYMENT.md`](WINDOWS_DEPLOYMENT.md)
+
+#### ✨ Scripts Automatizados Disponibles
+
+- **`./scripts/deploy.sh`** - Script completo para Linux/macOS
+- **`.\scripts\deploy.ps1`** - Script completo para Windows PowerShell  
+- **`.\scripts\deploy.bat`** - Script básico para Windows CMD
+- **`./scripts/cleanup.sh`** - Limpiar recursos
+- **`./scripts/status.sh`** - Verificar estado del despliegue
+
+🎉 **Los scripts automatizan TODO:**
+- Buckets S3 (código Lambda + reportes)
+- Contraseña de base de datos (Secrets Manager)
+- Creación y inicialización de RDS
+- VPC, Cognito, API Gateway, Step Functions, etc.
 
 ### Despliegue Automático con Bitbucket
 
