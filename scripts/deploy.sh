@@ -366,16 +366,24 @@ show_header "INFORMACIÓN IMPORTANTE" $YELLOW
 # Obtener información importante
 API_URL=$(get_stack_output event-manager ApiGatewayUrl)
 USER_POOL_ID=$(get_stack_output event-manager CognitoUserPoolId)
-DB_ENDPOINT=$(get_stack_output event-manager DatabaseEndpoint)
-
 # Valores por defecto si no se encuentran
 API_URL=${API_URL:-"No disponible"}
 USER_POOL_ID=${USER_POOL_ID:-"No disponible"}
 DB_ENDPOINT=${DB_ENDPOINT:-"No disponible"}
 
-log_info "API Gateway URL: $API_URL"
-log_info "Cognito User Pool ID: $USER_POOL_ID"
-log_info "Database Endpoint: $DB_ENDPOINT"
+# Obtener Client ID de Cognito
+log_info "Obteniendo Client ID de Cognito..."
+CLIENT_ID=$(aws cognito-idp list-user-pool-clients --user-pool-id "$USER_POOL_ID" --query 'UserPoolClients[0].ClientId' --output text 2>/dev/null || echo "No disponible")
+
+echo -e "\n${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║                    🚀 INFORMACIÓN DEL DESPLIEGUE                ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+log_success "🌐 API Gateway URL: $API_URL"
+log_success "🔑 Cognito User Pool ID: $USER_POOL_ID"
+log_success "🔑 Cognito Client ID: $CLIENT_ID"
+log_success "🗄️ Database Endpoint: ${DB_ENDPOINT:-"No disponible"}"
+echo ""
 
 show_header "PRÓXIMOS PASOS" $YELLOW
 log_info "1. Configura usuarios en Cognito User Pool"
@@ -383,14 +391,23 @@ log_info "2. Prueba los endpoints del API Gateway"
 log_info "3. Revisa los logs en CloudWatch"
 log_info "4. Configura el frontend para usar estos endpoints"
 
-show_header "COMANDOS ÚTILES" $YELLOW
+show_header "COMANDOS ÚTILES" $BLUE
+echo "# Probar la API Gateway:"
+echo "curl $API_URL/events"
+echo ""
+echo "# Ver información completa del despliegue:"
+echo "aws cloudformation describe-stacks --stack-name event-manager --query 'Stacks[0].Outputs[].{Key:OutputKey,Value:OutputValue}' --output table"
+echo ""
 echo "# Ver logs de una función Lambda:"
-echo "aws logs filter-log-events --log-group-name /aws/lambda/event-manager-CreateEventLambda --start-time \$(date -d '1 hour ago' +%s)000"
+echo "aws logs filter-log-events --log-group-name /aws/lambda/CreateEventLambda-dev --start-time \$(date -d '1 hour ago' +%s)000"
 echo ""
 echo "# Ver credenciales de la base de datos:"
 echo "aws secretsmanager get-secret-value --secret-id $SECRET_ARN --query SecretString --output text | jq ."
 echo ""
+echo "# Obtener Client ID de Cognito:"  
+echo "aws cognito-idp list-user-pool-clients --user-pool-id $USER_POOL_ID --query 'UserPoolClients[0].ClientId' --output text"
+echo ""
 echo "# Eliminar todo (CUIDADO - esto borra todos los datos):"
-echo "./cleanup.sh"
+echo "./scripts/cleanup.sh"
 
 log_success "¡Despliegue completado exitosamente en $(date)!"
