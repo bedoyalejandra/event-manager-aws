@@ -248,6 +248,66 @@ else
     log_info "Stack event-manager no existe o ya fue eliminado"
 fi
 
+# Paso 1.5: Eliminar stack de InitDB (event-manager-initdb)
+log_info "Eliminando stack InitDB: event-manager-initdb"
+if aws cloudformation describe-stacks --stack-name event-manager-initdb > /dev/null 2>&1; then
+    log_warning "Eliminando stack event-manager-initdb..."
+    aws cloudformation delete-stack --stack-name event-manager-initdb
+    wait_for_stack_deletion event-manager-initdb
+else
+    log_info "Stack event-manager-initdb no existe o ya fue eliminado"
+fi
+
+# Paso 1.6: Eliminar base de datos RDS y recursos relacionados
+log_info "Eliminando recursos de base de datos RDS..."
+
+# Configuración
+ENVIRONMENT=${ENVIRONMENT:-dev}
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "unknown")
+
+# Eliminar instancia RDS
+RDS_INSTANCE_ID="event-manager-db-$ENVIRONMENT"
+if aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE_ID" > /dev/null 2>&1; then
+    log_warning "Eliminando instancia RDS: $RDS_INSTANCE_ID"
+    log_info "Esto puede tomar 10-15 minutos..."
+    
+    # Eliminar instancia RDS (skip-final-snapshot para eliminación rápida)
+    aws rds delete-db-instance \
+        --db-instance-identifier "$RDS_INSTANCE_ID" \
+        --skip-final-snapshot \
+        --delete-automated-backups || log_warning "Error eliminando instancia RDS o ya está en proceso de eliminación"
+    
+    # Esperar a que se elimine
+    log_info "Esperando a que se elimine la instancia RDS..."
+    aws rds wait db-instance-deleted --db-instance-identifier "$RDS_INSTANCE_ID" || log_warning "Timeout esperando eliminación de RDS"
+    log_success "Instancia RDS eliminada: $RDS_INSTANCE_ID"
+else
+    log_info "Instancia RDS $RDS_INSTANCE_ID no existe o ya fue eliminada"
+fi
+
+# Eliminar Security Group de RDS
+SG_NAME="event-manager-rds-sg"
+if aws ec2 describe-security-groups --group-names "$SG_NAME" > /dev/null 2>&1; then
+    SG_ID=$(aws ec2 describe-security-groups --group-names "$SG_NAME" --query 'SecurityGroups[0].GroupId' --output text)
+    log_warning "Eliminando Security Group RDS: $SG_NAME ($SG_ID)"
+    aws ec2 delete-security-group --group-id "$SG_ID" || log_warning "Error eliminando Security Group RDS"
+    log_success "Security Group RDS eliminado: $SG_NAME"
+else
+    log_info "Security Group $SG_NAME no existe o ya fue eliminado"
+fi
+
+# Eliminar Secret de base de datos
+SECRET_NAME="event-app/db-credentials-$ENVIRONMENT-$AWS_ACCOUNT_ID"
+if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" > /dev/null 2>&1; then
+    log_warning "Eliminando secret de base de datos: $SECRET_NAME"
+    aws secretsmanager delete-secret \
+        --secret-id "$SECRET_NAME" \
+        --force-delete-without-recovery || log_warning "Error eliminando secret de base de datos"
+    log_success "Secret de base de datos eliminado: $SECRET_NAME"
+else
+    log_info "Secret $SECRET_NAME no existe o ya fue eliminado"
+fi
+
 # Paso 2: Vaciar buckets S3 antes de eliminar el stack S3
 log_info "Verificando buckets S3 para vaciar..."
 if aws cloudformation describe-stacks --stack-name event-manager-s3 > /dev/null 2>&1; then
@@ -326,6 +386,26 @@ if [[ -n "$ORPHAN_BUCKETS" && "$ORPHAN_BUCKETS" != "None" ]]; then
     log_info "Puedes eliminarlos manualmente si es necesario."
 fi
 
+# Verificar instancias RDS huérfanas
+ORPHAN_RDS=$(aws rds describe-db-instances \
+    --query 'DBInstances[?contains(DBInstanceIdentifier, `event-manager`)].DBInstanceIdentifier' \
+    --output text 2>/dev/null || echo "")
+
+if [[ -n "$ORPHAN_RDS" && "$ORPHAN_RDS" != "None" ]]; then
+    log_warning "Se encontraron instancias RDS huérfanas: $ORPHAN_RDS"
+    log_info "Puedes eliminarlas manualmente si es necesario."
+fi
+
+# Verificar secrets huérfanos
+ORPHAN_SECRETS=$(aws secretsmanager list-secrets \
+    --query 'SecretList[?contains(Name, `event-app/db-credentials`)].Name' \
+    --output text 2>/dev/null || echo "")
+
+if [[ -n "$ORPHAN_SECRETS" && "$ORPHAN_SECRETS" != "None" ]]; then
+    log_warning "Se encontraron secrets huérfanos: $ORPHAN_SECRETS"
+    log_info "Puedes eliminarlos manualmente si es necesario."
+fi
+
 # RESUMEN FINAL
 echo -e "\n${GREEN}"
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -338,14 +418,20 @@ log_info "Fecha de eliminación: $(date)"
 
 echo -e "\n${YELLOW}=== RESUMEN DE ELIMINACIÓN ===${NC}"
 log_info "✅ Stack event-manager eliminado"
+log_info "✅ Stack event-manager-initdb eliminado"
+log_info "✅ Base de datos RDS eliminada"
+log_info "✅ Security Group RDS eliminado"
+log_info "✅ Secrets Manager eliminado"
 log_info "✅ Stack event-manager-s3 eliminado"
 log_info "✅ Buckets S3 vaciados"
 log_info "✅ Archivos temporales eliminados"
 
-if [[ -n "$ORPHAN_LAMBDAS" && "$ORPHAN_LAMBDAS" != "None" ]] || [[ -n "$ORPHAN_BUCKETS" && "$ORPHAN_BUCKETS" != "None" ]]; then
+if [[ -n "$ORPHAN_LAMBDAS" && "$ORPHAN_LAMBDAS" != "None" ]] || [[ -n "$ORPHAN_BUCKETS" && "$ORPHAN_BUCKETS" != "None" ]] || [[ -n "$ORPHAN_RDS" && "$ORPHAN_RDS" != "None" ]] || [[ -n "$ORPHAN_SECRETS" && "$ORPHAN_SECRETS" != "None" ]]; then
     echo -e "\n${YELLOW}=== RECURSOS QUE REQUIEREN ATENCIÓN MANUAL ===${NC}"
     [[ -n "$ORPHAN_LAMBDAS" && "$ORPHAN_LAMBDAS" != "None" ]] && log_warning "Funciones Lambda: $ORPHAN_LAMBDAS"
     [[ -n "$ORPHAN_BUCKETS" && "$ORPHAN_BUCKETS" != "None" ]] && log_warning "Buckets S3: $ORPHAN_BUCKETS"
+    [[ -n "$ORPHAN_RDS" && "$ORPHAN_RDS" != "None" ]] && log_warning "Instancias RDS: $ORPHAN_RDS"
+    [[ -n "$ORPHAN_SECRETS" && "$ORPHAN_SECRETS" != "None" ]] && log_warning "Secrets Manager: $ORPHAN_SECRETS"
 fi
 
 echo -e "\n${BLUE}Para volver a desplegar el sistema, ejecuta:${NC}"
