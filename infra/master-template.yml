@@ -63,16 +63,6 @@ Parameters:
 
 Resources:
   # ===========================================
-  # RDS Stack - TEMPORARILY DISABLED FOR TESTING
-  # ===========================================
-  # RDSStack:
-  #   Type: AWS::CloudFormation::Stack
-  #   Properties:
-  #     TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/rds.yml'
-  #     Parameters:
-  #       DBUsername: !Ref DBUsername
-
-  # ===========================================
   # S3 Stack - Buckets para reportes
   # ===========================================
   S3Stack:
@@ -123,22 +113,6 @@ Resources:
         ReportsBucket: !GetAtt S3Stack.Outputs.ReportsBucketName
         EmailQueue: !GetAtt SQSSesStack.Outputs.EmailQueueUrl
         Environment: !Ref Environment
-
-  # ===========================================
-  # InitDB Stack - Inicialización de base de datos
-  # ===========================================
-  # InitDB Stack - TEMPORARILY DISABLED (needs RDS)
-  # InitDBStack:
-  #   Type: AWS::CloudFormation::Stack
-  #   DependsOn: [RDSStack]
-  #   Properties:
-  #     TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/initdb.yml'
-  #     Parameters:
-  #       RDSSecretArn: !GetAtt RDSStack.Outputs.RDSSecretArn
-  #       RDSClusterEndpoint: !GetAtt RDSStack.Outputs.RDSClusterEndpoint
-  #       LambdaCodeBucket: !Ref S3LambdaBucket
-  #       LambdaCodeKey: !Ref LambdaCodeKey
-  #       Environment: !Ref Environment
 
   # ===========================================
   # API Gateway Stack - API REST
@@ -192,11 +166,6 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-ApiGatewayUrl"
 
-  # DatabaseEndpoint:
-  #   Description: Endpoint de la base de datos
-  #   Value: !GetAtt RDSStack.Outputs.RDSClusterEndpoint
-  #   Export:
-  #     Name: !Sub "${AWS::StackName}-DatabaseEndpoint"
 
   CognitoUserPoolId:
     Description: ID del User Pool de Cognito
