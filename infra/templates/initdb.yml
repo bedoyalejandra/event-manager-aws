@@ -2,16 +2,10 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Init DB Lambda to create tables
 
 Parameters:
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
   RDSSecretArn:
     Type: String
   RDSClusterEndpoint:
     Type: String
-  SecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
   LambdaCodeBucket:
     Type: String
   LambdaCodeKey:
@@ -28,16 +22,12 @@ Resources:
     Properties:
       FunctionName: InitDBLambda
       Runtime: nodejs18.x
-      Handler: src/init-db/index.handler
+      Handler: init-db/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 20
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn

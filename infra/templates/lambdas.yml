@@ -2,15 +2,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Lambda functions for Event Manager application
 
 Parameters:
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
   RDSSecretArn:
     Type: String
     Description: ARN of the RDS credentials in Secrets Manager
-  SecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
   LambdaCodeBucket:
     Type: String
   LambdaCodeKey:
@@ -54,20 +48,17 @@ Resources:
     Properties:
       FunctionName: !Sub "CreateEventLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/create-event/index.handler
+      Handler: create-event/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: event-manager-rdsstack-18fa2t4x9403-eventdbcluster-uoxnliylprdr.cluster-cumblbbkv5mp.us-west-2.rds.amazonaws.com
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
@@ -77,16 +68,12 @@ Resources:
     Properties:
       FunctionName: !Sub "DeleteEventLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/delete-event/index.handler
+      Handler: delete-event/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -100,16 +87,12 @@ Resources:
     Properties:
       FunctionName: !Sub "UpdateEventLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/update-event/index.handler
+      Handler: update-event/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -123,16 +106,12 @@ Resources:
     Properties:
       FunctionName: !Sub "DisableEventLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/disable-event/index.handler
+      Handler: disable-event/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -146,16 +125,12 @@ Resources:
     Properties:
       FunctionName: !Sub "GetActiveEventsLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/get-active-events/index.handler
+      Handler: get-active-events/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -169,16 +144,12 @@ Resources:
     Properties:
       FunctionName: !Sub "GenerateReportLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/generate-report/index.handler
+      Handler: generate-report/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 512
       Timeout: 300
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -193,7 +164,7 @@ Resources:
     Properties:
       FunctionName: !Sub "GetReportLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/get-report/index.handler
+      Handler: get-report/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
@@ -211,16 +182,12 @@ Resources:
     Properties:
       FunctionName: !Sub "ProcessReportDataLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/process-report-data/index.handler
+      Handler: process-report-data/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 512
       Timeout: 300
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -235,7 +202,7 @@ Resources:
     Properties:
       FunctionName: !Sub "SendEmailLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/send-email/index.handler
+      Handler: send-email/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
@@ -252,16 +219,12 @@ Resources:
     Properties:
       FunctionName: !Sub "SendEventReminderLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/send-event-reminder/index.handler
+      Handler: send-event-reminder/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -276,16 +239,12 @@ Resources:
     Properties:
       FunctionName: !Sub "PostEventAssistanceLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/post-event-assistance/index.handler
+      Handler: post-event-assistance/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
@@ -300,16 +259,12 @@ Resources:
     Properties:
       FunctionName: !Sub "InitDBLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: src/init-db/index.handler
+      Handler: init-db/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
       MemorySize: 256
       Timeout: 300
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn

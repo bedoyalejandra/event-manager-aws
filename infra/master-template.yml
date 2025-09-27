@@ -72,7 +72,7 @@ Resources:
       TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/rds.yml'
       Parameters:
         VpcId: !GetAtt VPCStack.Outputs.VpcId
-        SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
+        SubnetIds: !GetAtt VPCStack.Outputs.PublicSubnetIds
         DBUsername: !Ref DBUsername
 
   # ===========================================
@@ -119,10 +119,7 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/lambdas.yml'
       Parameters:
-        VpcId: !GetAtt VPCStack.Outputs.VpcId
-        SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
         RDSSecretArn: !GetAtt RDSStack.Outputs.RDSSecretArn
-        SecurityGroupId: !GetAtt RDSStack.Outputs.RDSSecurityGroupId
         LambdaCodeBucket: !Ref S3LambdaBucket
         LambdaCodeKey: !Ref LambdaCodeKey
         ReportsBucket: !GetAtt S3Stack.Outputs.ReportsBucketName
@@ -138,11 +135,8 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/initdb.yml'
       Parameters:
-        VpcId: !GetAtt VPCStack.Outputs.VpcId
-        SubnetIds: !GetAtt VPCStack.Outputs.PrivateSubnetIds
         RDSSecretArn: !GetAtt RDSStack.Outputs.RDSSecretArn
         RDSClusterEndpoint: !GetAtt RDSStack.Outputs.RDSClusterEndpoint
-        SecurityGroupId: !GetAtt RDSStack.Outputs.RDSSecurityGroupId
         LambdaCodeBucket: !Ref S3LambdaBucket
         LambdaCodeKey: !Ref LambdaCodeKey
         Environment: !Ref Environment
