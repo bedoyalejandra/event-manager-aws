@@ -81,6 +81,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
@@ -100,6 +101,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
@@ -119,6 +121,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
@@ -138,6 +141,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
