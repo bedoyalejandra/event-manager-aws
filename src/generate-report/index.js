@@ -2,7 +2,7 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     body: JSON.stringify({ 
-      message: "Generate Report Lambda - Not implemented yet",
+      message: "hOLIIII VENGOS DESDE EL CODIGO",
       function: "generate-report",
       reportId: "placeholder-report-id"
     })
