@@ -112,6 +112,20 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateEventLambdaArn}/invocations"
 
+# Update Assistance Event Method (PUT /events/assistance)
+  UpdateAssistanceEventMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref EventByIdResource
+      HttpMethod: PUT
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostEventAssistanceLambdaArn}/invocations"
+  
   # Delete Event Method (DELETE /events/{id})
   DeleteEventMethod:
     Type: AWS::ApiGateway::Method
