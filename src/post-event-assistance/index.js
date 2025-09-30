@@ -84,7 +84,7 @@ exports.handler = async (event) => {
     const query = `
       UPDATE events
       SET capacity = capacity - ?
-      WHERE id = ? AND capacity >= ?;
+      WHERE id = ? AND capacity >= ? AND status = 'ACTIVE';
     `;
 
     // Extraer los datos del cuerpo de la solicitud
