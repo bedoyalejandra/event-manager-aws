@@ -9,7 +9,7 @@
   },
   {
     "ParameterKey": "S3LambdaBucket",
-    "ParameterValue": "event-manager-lambda-code-dev-953108895836"
+    "ParameterValue": "event-manager-lambda-code-dev-617632154921"
   },
   {
     "ParameterKey": "LambdaCodeKey",
@@ -21,10 +21,10 @@
   },
   {
     "ParameterKey": "ExistingLambdaCodeBucket",
-    "ParameterValue": "event-manager-lambda-code-dev-953108895836"
+    "ParameterValue": "event-manager-lambda-code-dev-617632154921"
   },
   {
     "ParameterKey": "ExistingReportsBucket",
-    "ParameterValue": "event-manager-reports-dev-953108895836"
+    "ParameterValue": "event-manager-reports-dev-617632154921"
   }
 ]

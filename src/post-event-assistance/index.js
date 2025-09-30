@@ -60,60 +60,95 @@ exports.handler = async (event) => {
       };
     }
     
-    const { eventId, ticketsPurchased } = bodyData;
-    console.log("✅ Parsed event data:", bodyData);
+    // Extract eventId from path parameters
+    const eventId = event.pathParameters?.id;
+    const { userId, attendanceStatus } = bodyData;
+    console.log("✅ Parsed event data:", { eventId, ...bodyData });
 
-    if (!eventId || !ticketsPurchased) {
+    if (!eventId || !userId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Campos obligatorios faltantes" }),
+        body: JSON.stringify({ error: "Missing required fields: eventId (from path), userId (from body)" }),
       };
     }
 
-    // 4. Actualizar asistencia a eventos
-    console.log("📋 Updating event attendance...");
-    const query = `
-      UPDATE events
-      SET capacity = capacity - ?
-      WHERE id = ? AND capacity >= ?;
+    // 4. Verify user exists
+    console.log("🔍 Checking if user exists...");
+    const [userRows] = await connection.execute(
+      "SELECT id FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: "User not found. Please ensure user is registered in the system." }),
+      };
+    }
+
+    // 5. Verify event exists and has capacity
+    console.log("🔍 Checking event availability...");
+    const [eventRows] = await connection.execute(
+      "SELECT id, capacity, status FROM events WHERE id = ?",
+      [eventId]
+    );
+
+    if (eventRows.length === 0) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: "Event not found" }),
+      };
+    }
+
+    const eventData = eventRows[0];
+    if (eventData.status !== 'ACTIVE') {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Event is not active" }),
+      };
+    }
+
+    // 6. Check current registrations
+    const [countRows] = await connection.execute(
+      "SELECT COUNT(*) as registrations FROM event_assistance WHERE event_id = ? AND attendance_status != 'CANCELLED'",
+      [eventId]
+    );
+
+    if (countRows[0].registrations >= eventData.capacity) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Event is at full capacity" }),
+      };
+    }
+
+    // 7. Register assistance
+    console.log("📋 Registering event assistance...");
+    const insertQuery = `
+      INSERT INTO event_assistance (event_id, user_id, attendance_status)
+      VALUES (?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        attendance_status = VALUES(attendance_status),
+        updated_at = CURRENT_TIMESTAMP
     `;
 
-    // Extraer los datos del cuerpo de la solicitud
-    if (!eventId || !ticketsPurchased) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-        error: "Faltan campos obligatorios: eventId y ticketsPurchased",
-    }),
-  };
-}
-
-    // Ejecutar la consulta con los valores proporcionados
-    const [result] = await connection.execute(query, [
-      ticketsPurchased, // Cantidad de entradas compradas
-      eventId,          // ID del evento
-      ticketsPurchased, // Validar que la capacidad sea suficiente
+    const [result] = await connection.execute(insertQuery, [
+      eventId,
+      userId,
+      attendanceStatus || 'REGISTERED'
     ]);
 
-    // Verificar si se actualizó alguna fila
-    if (result.affectedRows === 0) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-        message: "No se pudo actualizar el evento. Verifica que el evento exista y tenga capacidad suficiente.",
+    console.log("✅ Event assistance registered successfully");
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: "Event assistance registered successfully",
+        assistanceId: result.insertId || null,
+        eventId: eventId,
+        userId: userId,
+        status: attendanceStatus || 'REGISTERED'
       }),
     };
-  }
-    console.log("✅ Event attendance updated successfully");
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify({
-          message: "Capacidad del evento actualizada exitosamente",
-          eventId: eventId,
-          ticketsPurchased: ticketsPurchased,
-        }),
-      };
     } catch (err) {
     console.error("❌ Error actualizando asistencia a eventos:", err);
     return {

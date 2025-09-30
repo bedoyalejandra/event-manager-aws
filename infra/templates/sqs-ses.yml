@@ -158,9 +158,6 @@ Resources:
             - DimensionName: MessageTag
               DimensionValueSource: messageTag
               DefaultDimensionValue: default
-            - DimensionName: EmailAddress
-              DimensionValueSource: emailAddress
-              DefaultDimensionValue: default
 
   # ===========================================
   # IAM Role for SQS Access

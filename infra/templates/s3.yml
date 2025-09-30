@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: S3 Buckets para Event Manager App
+Description: S3 Buckets for Event Manager App
 
 Parameters:
   Environment:

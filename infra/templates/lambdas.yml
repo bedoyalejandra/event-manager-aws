@@ -256,6 +256,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           EMAIL_QUEUE: !Ref EmailQueue
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn

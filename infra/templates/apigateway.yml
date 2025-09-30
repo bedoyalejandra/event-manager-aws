@@ -26,6 +26,10 @@ Parameters:
     Type: String
     Description: ARN of the Get Active Events Lambda function
   
+  PostEventAssistanceLambdaArn:
+    Type: String
+    Description: ARN of the Post Event Assistance Lambda function
+  
   Environment:
     Type: String
     Default: dev
@@ -111,20 +115,6 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateEventLambdaArn}/invocations"
-
-# Update Assistance Event Method (PUT /events/assistance)
-  UpdateAssistanceEventMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref EventByIdResource
-      HttpMethod: PUT
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref CognitoAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostEventAssistanceLambdaArn}/invocations"
   
   # Delete Event Method (DELETE /events/{id})
   DeleteEventMethod:
@@ -140,6 +130,29 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteEventLambdaArn}/invocations"
 
+  # Assistance Resource
+  AssistanceResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: assistance
+      RestApiId: !Ref ApiGateway
+
+
+  # Post Event Assistance Method (POST /assistance)
+  PostEventAssistanceMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref AssistanceResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostEventAssistanceLambdaArn}/invocations"
+
   # API Gateway Deployment
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -148,6 +161,7 @@ Resources:
       - GetActiveEventsMethod
       - UpdateEventMethod
       - DeleteEventMethod
+      - PostEventAssistanceMethod
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
@@ -181,6 +195,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref DeleteEventLambdaArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+
+  PostEventAssistanceLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PostEventAssistanceLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
