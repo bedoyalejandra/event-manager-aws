@@ -42,14 +42,23 @@ exports.handler = async (event) => {
     console.log("📋 Parsing request body...");
     console.log("Assistance received:", JSON.stringify(event, null, 2));
     
-    if (!event.body) {
+    let bodyData;
+    try {
+      bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+  } catch (parseError) {
+    console.error("❌ Error parsing JSON body:", parseError);
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: "Invalid JSON format in request body" }),
+    };
+  }
+
+    if (!bodyData.eventId || !bodyData.ticketsPurchased || !bodyData.userId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Request body is required" }),
+        body: JSON.stringify({ error: "Faltan campos obligatorios: eventId, ticketsPurchased o userId" }),
       };
     }
-    
-    let bodyData;
     try {
       bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
     } catch (parseError) {
