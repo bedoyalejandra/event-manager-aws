@@ -36,6 +36,36 @@ exports.handler = async (event) => {
       database: dbName,
     });
 
+    console.log("Creating users table...");
+    const usersTableDDL = `
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(255) PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        name VARCHAR(255),
+        cognito_sub VARCHAR(255) UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      );
+    `;
+
+    await connection.execute(usersTableDDL);
+    console.log("✅ Users table created/verified successfully");
+
+     console.log("Creating report table...");
+      const reportTableDDL = `
+      CREATE TABLE IF NOT EXISTS report (
+        id VARCHAR(255) PRIMARY KEY,
+        tickets_sold VARCHAR(255) NOT NULL UNIQUE,
+        event_name VARCHAR(255),        
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP        
+      );
+    `;
+
+    await connection.execute(reportTableDDL);
+    console.log("✅ Users table created/verified successfully");
+
+    
+
     console.log("Creating events table...");
     const eventsTableDDL = `
       CREATE TABLE IF NOT EXISTS events (
@@ -59,9 +89,7 @@ exports.handler = async (event) => {
       CREATE TABLE IF NOT EXISTS event_assistance (
         id INT AUTO_INCREMENT PRIMARY KEY,
         event_id INT NOT NULL,
-        cognito_user_id VARCHAR(255) NOT NULL,
-        user_email VARCHAR(255) NOT NULL,
-        user_name VARCHAR(255),
+        user_id VARCHAR(255) NOT NULL,
         attendance_status ENUM('REGISTERED', 'ATTENDED', 'CANCELLED') DEFAULT 'REGISTERED',
         registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         attendance_date TIMESTAMP NULL,
@@ -69,7 +97,8 @@ exports.handler = async (event) => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_user_event (event_id, cognito_user_id)
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_event (event_id, user_id)
       );
     `;
 
@@ -78,12 +107,13 @@ exports.handler = async (event) => {
 
     console.log("Creating database indexes...");
     const indexes = [
+      { name: "idx_users_email", sql: "CREATE INDEX idx_users_email ON users(email)" },
+      { name: "idx_users_cognito", sql: "CREATE INDEX idx_users_cognito ON users(cognito_sub)" },
       { name: "idx_status", sql: "CREATE INDEX idx_status ON events(status)" },
       { name: "idx_start_date", sql: "CREATE INDEX idx_start_date ON events(start_date)" },
       { name: "idx_created_at", sql: "CREATE INDEX idx_created_at ON events(created_at)" },
       { name: "idx_assistance_event", sql: "CREATE INDEX idx_assistance_event ON event_assistance(event_id)" },
-      { name: "idx_assistance_cognito_user", sql: "CREATE INDEX idx_assistance_cognito_user ON event_assistance(cognito_user_id)" },
-      { name: "idx_assistance_email", sql: "CREATE INDEX idx_assistance_email ON event_assistance(user_email)" },
+      { name: "idx_assistance_user", sql: "CREATE INDEX idx_assistance_user ON event_assistance(user_id)" },
       { name: "idx_assistance_status", sql: "CREATE INDEX idx_assistance_status ON event_assistance(attendance_status)" }
     ];
 
@@ -110,10 +140,9 @@ exports.handler = async (event) => {
       statusCode: 200, 
       body: JSON.stringify({
         message: "Database initialized successfully",
-        tablesCreated: ["events", "event_assistance"],
-        indexesCreated: 7,
-        currentEventsCount: rows[0].count,
-        note: "User information managed by Cognito"
+        tablesCreated: ["users", "events", "event_assistance"],
+        indexesCreated: 8,
+        currentEventsCount: rows[0].count
       })
     };
   } catch (err) {
