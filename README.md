@@ -140,9 +140,20 @@ aws cloudformation deploy \
 
 #### ✨ Scripts Automatizados Disponibles
 
+**Despliegue Completo:**
 - **`./scripts/deploy.sh`** - Script completo para Linux/macOS
 - **`.\scripts\deploy.ps1`** - Script completo para Windows PowerShell  
 - **`.\scripts\deploy.bat`** - Script básico para Windows CMD
+
+**Actualización de Código Lambda:**
+- **`./scripts/upload-lambda-code.sh`** - Subir y actualizar código Lambda (Linux/macOS)
+- **`.\scripts\upload-lambda-code.bat`** - Subir y actualizar código Lambda (Windows)
+
+**Inicialización de Base de Datos:**
+- **`./scripts/run-init-db.sh`** - Ejecutar InitDB para crear/actualizar tablas (Linux/macOS)
+- **`.\scripts\run-init-db.bat`** - Ejecutar InitDB para crear/actualizar tablas (Windows)
+
+**Utilidades:**
 - **`./scripts/cleanup.sh`** - Limpiar recursos
 - **`./scripts/status.sh`** - Verificar estado del despliegue
 
@@ -413,14 +424,78 @@ aws cloudformation validate-template --template-body file://infra/master-templat
 # Ejecutar tests (si existen)
 npm test
 
-# Empaquetar funciones Lambda localmente
-zip -r lambda-functions.zip src/
+# Actualizar solo el código Lambda (desarrollo rápido)
+./scripts/upload-lambda-code.sh
+
+# Actualizar modelo de base de datos
+./scripts/run-init-db.sh
 
 # Invocar función Lambda después del despliegue
 aws lambda invoke \
-  --function-name event-manager-CreateEventLambda \
+  --function-name CreateEventLambda-dev \
   --payload '{"test": true}' \
   response.json
+```
+
+### 🔄 Flujo de Desarrollo Rápido
+
+Para desarrollo iterativo sin redesplegar toda la infraestructura:
+
+**1. Modificar código Lambda:**
+```bash
+# Editar archivos en src/
+vim src/create-event/index.js
+```
+
+**2. Actualizar funciones Lambda:**
+```bash
+# Linux/macOS
+./scripts/upload-lambda-code.sh
+
+# Windows PowerShell
+.\scripts\upload-lambda-code.ps1
+
+# Windows CMD
+scripts\upload-lambda-code.bat
+```
+
+Este script automáticamente:
+- ✅ Instala dependencias de Node.js
+- ✅ Empaqueta todas las funciones Lambda
+- ✅ Sube el código a S3
+- ✅ **Actualiza las 12 funciones Lambda automáticamente**
+
+**3. Actualizar modelo de base de datos:**
+
+Si modificas el esquema en `src/init-db/index.js`:
+
+```bash
+# Linux/macOS
+./scripts/run-init-db.sh
+
+# Windows PowerShell
+.\scripts\run-init-db.ps1
+
+# Windows CMD
+scripts\run-init-db.bat
+```
+
+Este script:
+- ✅ Ejecuta la función InitDB Lambda
+- ✅ Crea/actualiza tablas: `users`, `events`, `event_assistance`, `report`
+- ✅ Crea índices para optimización
+- ✅ Muestra logs detallados de la operación
+
+**4. Probar cambios:**
+```bash
+# Invocar función actualizada
+aws lambda invoke \
+  --function-name CreateEventLambda-dev \
+  --payload file://test-payload.json \
+  response.json
+
+# Ver respuesta
+cat response.json | jq '.'
 ```
 
 ### Variables de Entorno por Contexto
