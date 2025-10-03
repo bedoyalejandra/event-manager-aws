@@ -74,13 +74,16 @@ echo [INFO] Creating ZIP with Lambda functions...
 if exist "lambda-functions.zip" del "lambda-functions.zip"
 
 REM Use PowerShell to create ZIP with proper compression
-powershell -command "try { $compress = @{ Path = Get-ChildItem -Exclude '*.zip', 'package-lock.json' -Recurse | ForEach-Object { $_.FullName }; DestinationPath = 'lambda-functions.zip'; CompressionLevel = 'Optimal' }; Compress-Archive @compress; Write-Host '[SUCCESS] ZIP created successfully' } catch { Write-Host '[ERROR] Failed to create ZIP:' $_.Exception.Message; exit 1 }"
+powershell -command "try { $compress = @{ Path = Get-ChildItem -Exclude '*.zip', 'package-lock.json' -Recurse | ForEach-Object { $_.FullName }; DestinationPath = 'lambda-functions.zip'; CompressionLevel = 'Optimal' }; Compress-Archive @compress -Force; Write-Host '[SUCCESS] ZIP created successfully' } catch { Write-Host '[ERROR] Failed to create ZIP:' $_.Exception.Message; exit 1 }"
 if !errorlevel! neq 0 (
     echo [ERROR] Failed to create ZIP file
     cd ..
     pause
     exit /b 1
 )
+
+REM Wait a moment for file system to release the file
+timeout /t 2 /nobreak >nul
 
 REM Verify ZIP was created and get size
 for /f "tokens=*" %%i in ('powershell -command "if (Test-Path 'lambda-functions.zip') { $size = [math]::Round((Get-Item 'lambda-functions.zip').Length / 1MB, 2); Write-Output $size } else { exit 1 }"') do set ZIP_SIZE=%%i
@@ -94,7 +97,7 @@ echo [SUCCESS] ZIP created. Size: %ZIP_SIZE% MB
 
 REM Verify dependencies are included in ZIP
 echo [INFO] Verifying dependencies are included...
-powershell -command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; $zipFile = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path 'lambda-functions.zip')); $hasMySQL = $zipFile.Entries | Where-Object { $_.FullName -like '*node_modules/mysql2*' }; $zipFile.Dispose(); if ($hasMySQL) { Write-Host '[SUCCESS] mysql2 dependencies included in ZIP' } else { Write-Host '[ERROR] mysql2 dependencies NOT found in ZIP'; exit 1 } } catch { Write-Host '[ERROR] Could not verify ZIP contents:' $_.Exception.Message; exit 1 }"
+powershell -command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; $zipPath = (Resolve-Path 'lambda-functions.zip').Path; $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath); try { $hasMySQL = $zip.Entries | Where-Object { $_.FullName -like '*node_modules/mysql2*' } | Select-Object -First 1; if ($hasMySQL) { Write-Host '[SUCCESS] mysql2 dependencies included in ZIP' } else { Write-Host '[ERROR] mysql2 dependencies NOT found in ZIP'; exit 1 } } finally { $zip.Dispose() } } catch { Write-Host '[ERROR] Could not verify ZIP contents:' $_.Exception.Message; exit 1 }"
 if !errorlevel! neq 0 (
     echo [ERROR] ZIP verification failed
     cd ..
