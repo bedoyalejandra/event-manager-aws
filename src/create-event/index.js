@@ -120,26 +120,26 @@ exports.handler = async (event) => {
       // Don't fail the request if EventBridge publish fails
     }
 
-    // 6. Create EventBridge Scheduler for automatic deletion at event time
+    // 6. Create EventBridge Scheduler for automatic disabling at event time
     try {
-      console.log("📅 Creating EventBridge Scheduler for event deletion...");
+      console.log("📅 Creating EventBridge Scheduler for event auto-disable...");
       const schedulerRoleArn = process.env.SCHEDULER_ROLE_ARN;
-      const deleteEventLambdaArn = process.env.DELETE_EVENT_LAMBDA_ARN;
+      const disableEventLambdaArn = process.env.DISABLE_EVENT_LAMBDA_ARN;
       
-      if (schedulerRoleArn && deleteEventLambdaArn) {
+      if (schedulerRoleArn && disableEventLambdaArn) {
         // Parse the start_date to create a schedule
         const eventDate = new Date(start_date);
         const scheduleExpression = `at(${eventDate.toISOString().slice(0, 19)})`;
         
         await scheduler.createSchedule({
-          Name: `delete-event-${eventId}-${Date.now()}`,
-          Description: `Auto-delete event ${eventId} at scheduled time`,
+          Name: `disable-event-${eventId}-${Date.now()}`,
+          Description: `Auto-disable event ${eventId} at scheduled time`,
           ScheduleExpression: scheduleExpression,
           FlexibleTimeWindow: {
             Mode: 'OFF',
           },
           Target: {
-            Arn: deleteEventLambdaArn,
+            Arn: disableEventLambdaArn,
             RoleArn: schedulerRoleArn,
             Input: JSON.stringify({
               eventId: eventId,

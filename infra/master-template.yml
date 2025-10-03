@@ -127,7 +127,7 @@ Resources:
       Parameters:
         Environment: !Ref Environment
         CreateEventLambdaArn: !GetAtt LambdasStack.Outputs.CreateEventLambdaArn
-        DeleteEventLambdaArn: !GetAtt LambdasStack.Outputs.DeleteEventLambdaArn
+        DisableEventLambdaArn: !GetAtt LambdasStack.Outputs.DisableEventLambdaArn
         CreateTaskLambdaArn: !GetAtt LambdasStack.Outputs.CreateTaskLambdaArn
 
   # ===========================================

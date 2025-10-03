@@ -12,9 +12,9 @@ Parameters:
     Type: String
     Description: ARN of the CreateEvent Lambda function
   
-  DeleteEventLambdaArn:
+  DisableEventLambdaArn:
     Type: String
-    Description: ARN of the DeleteEvent Lambda function
+    Description: ARN of the DisableEvent Lambda function
   
   CreateTaskLambdaArn:
     Type: String
@@ -73,7 +73,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
-                Resource: !Sub "${DeleteEventLambdaArn}"
+                Resource: !Sub "${DisableEventLambdaArn}"
 
   # ===========================================
   # Lambda Permissions for EventBridge
@@ -86,11 +86,11 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/EventManagerBus-${Environment}/EventCreated-${Environment}"
 
-  # Permission for EventBridge Scheduler to invoke DeleteEvent Lambda
-  DeleteEventSchedulerPermission:
+  # Permission for EventBridge Scheduler to invoke DisableEvent Lambda
+  DisableEventSchedulerPermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Sub "DeleteEventLambda-${Environment}"
+      FunctionName: !Sub "DisableEventLambda-${Environment}"
       Action: lambda:InvokeFunction
       Principal: scheduler.amazonaws.com
 

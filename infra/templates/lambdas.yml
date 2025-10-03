@@ -93,7 +93,7 @@ Resources:
           ENVIRONMENT: !Ref Environment
           EVENT_BUS_NAME: !Ref EventBusName
           SCHEDULER_ROLE_ARN: !Ref SchedulerRoleArn
-          DELETE_EVENT_LAMBDA_ARN: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DeleteEventLambda-${Environment}"
+          DISABLE_EVENT_LAMBDA_ARN: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DisableEventLambda-${Environment}"
       Role: !GetAtt LambdaExecutionRole.Arn
 
   # 2. Delete Event Lambda
