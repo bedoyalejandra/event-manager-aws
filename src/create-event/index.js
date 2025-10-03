@@ -131,8 +131,11 @@ exports.handler = async (event) => {
         const eventDate = new Date(start_date);
         const scheduleExpression = `at(${eventDate.toISOString().slice(0, 19)})`;
         
+        // Sanitize name: only alphanumeric, -/_+=.@! allowed (max 64 chars)
+        const sanitizedName = `disable-event-${eventId}-${Date.now()}`.replace(/[^a-zA-Z0-9-_+=.@!]/g, '-').slice(0, 64);
+        
         await scheduler.createSchedule({
-          Name: `disable-event-${eventId}-${Date.now()}`,
+          Name: sanitizedName,
           Description: `Auto-disable event ${eventId} at scheduled time`,
           ScheduleExpression: scheduleExpression,
           FlexibleTimeWindow: {
@@ -173,8 +176,11 @@ exports.handler = async (event) => {
         if (reminderDate > new Date()) {
           const reminderScheduleExpression = `at(${reminderDate.toISOString().slice(0, 19)})`;
           
+          // Sanitize name: only alphanumeric, -/_+=.@! allowed (max 64 chars)
+          const sanitizedReminderName = `reminder-event-${eventId}-${Date.now()}`.replace(/[^a-zA-Z0-9-_+=.@!]/g, '-').slice(0, 64);
+          
           await scheduler.createSchedule({
-            Name: `reminder-event-${eventId}-${Date.now()}`,
+            Name: sanitizedReminderName,
             Description: `Send reminders 5 minutes before event ${eventId}`,
             ScheduleExpression: reminderScheduleExpression,
             FlexibleTimeWindow: {
