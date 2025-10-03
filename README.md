@@ -17,13 +17,15 @@ event-manager-aws/
 │   │   ├── sqs-ses.yml             # Colas SQS + permisos para SES
 │   │   ├── s3.yml                  # Bucket para reportes
 │   │   ├── stepfunctions.yml       # Workflow de generación de reportes
+│   │   ├── eventbridge.yml         # Event Bus, Rules y Scheduler
 │   │   └── initdb.yml              # Inicialización de base de datos
 │   └── parameters/                 # Parámetros por entorno
 │       ├── dev-params.json
 │       └── prod-params.json
 ├── src/                            # Código de las funciones Lambda
-│   ├── create-event/               # Crear eventos
-│   ├── delete-event/               # Eliminar eventos
+│   ├── create-event/               # Crear eventos (publica a EventBridge)
+│   ├── delete-event/               # Eliminar eventos (API + Scheduler)
+│   ├── create-task/                # Crear tareas (triggered by EventBridge)
 │   ├── update-event/               # Actualizar eventos
 │   ├── disable-event/              # Deshabilitar eventos
 │   ├── get-active-events/          # Obtener eventos activos
@@ -43,11 +45,12 @@ event-manager-aws/
 - **VPC**: Red privada personalizada
 - **Aurora Serverless**: Base de datos MySQL serverless
 - **API Gateway**: API REST con autenticación Cognito
-- **Lambda Functions**: 12 funciones serverless en Node.js
+- **Lambda Functions**: 13 funciones serverless en Node.js
 - **Cognito User Pools**: Autenticación y autorización
 - **SQS + SES**: Colas de mensajes y servicio de email
 - **S3**: Almacenamiento de reportes
 - **Step Functions**: Orquestación de workflows
+- **EventBridge**: Event bus y scheduler para automatización
 - **CloudFormation**: Infraestructura como código
 
 ## 📋 Funcionalidades
@@ -57,6 +60,12 @@ event-manager-aws/
 - ✅ Actualizar información de eventos
 - ✅ Deshabilitar/eliminar eventos
 - ✅ Consultar eventos activos
+
+### Automatización con EventBridge
+- ✅ **Creación automática de tareas** cuando se crea un evento
+- ✅ **Eliminación programada** de eventos en su fecha de ejecución
+- ✅ Event-driven architecture con EventBridge Event Bus
+- ✅ Scheduler dinámico para cada evento
 
 ### Sistema de Notificaciones
 - ✅ Recordatorios automáticos por email

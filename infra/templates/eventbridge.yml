@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EventBridge configuration for Event Manager application
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name
+  
+  CreateEventLambdaArn:
+    Type: String
+    Description: ARN of the CreateEvent Lambda function
+  
+  DeleteEventLambdaArn:
+    Type: String
+    Description: ARN of the DeleteEvent Lambda function
+  
+  CreateTaskLambdaArn:
+    Type: String
+    Description: ARN of the CreateTask Lambda function
+
+Resources:
+  # ===========================================
+  # Custom Event Bus for Event Manager
+  # ===========================================
+  EventManagerEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "EventManagerBus-${Environment}"
+
+  # ===========================================
+  # EventBridge Rule: Trigger CreateTask on Event Creation
+  # ===========================================
+  EventCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "EventCreated-${Environment}"
+      Description: Trigger task creation when a new event is created
+      EventBusName: !Ref EventManagerEventBus
+      EventPattern:
+        source:
+          - event.manager
+        detail-type:
+          - Event Created
+      State: ENABLED
+      Targets:
+        - Arn: !Sub "${CreateTaskLambdaArn}"
+          Id: CreateTaskTarget
+          RetryPolicy:
+            MaximumRetryAttempts: 2
+            MaximumEventAgeInSeconds: 3600
+
+  # ===========================================
+  # EventBridge Scheduler Role
+  # ===========================================
+  EventBridgeSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "EventBridgeSchedulerRole-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub "${DeleteEventLambdaArn}"
+
+  # ===========================================
+  # Lambda Permissions for EventBridge
+  # ===========================================
+  CreateTaskLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub "CreateTaskLambda-${Environment}"
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/EventManagerBus-${Environment}/EventCreated-${Environment}"
+
+  # Permission for EventBridge Scheduler to invoke DeleteEvent Lambda
+  DeleteEventSchedulerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub "DeleteEventLambda-${Environment}"
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+
+Outputs:
+  EventBusName:
+    Description: Name of the EventBridge Event Bus
+    Value: !Ref EventManagerEventBus
+    Export:
+      Name: !Sub "${AWS::StackName}-EventBusName"
+
+  EventBusArn:
+    Description: ARN of the EventBridge Event Bus
+    Value: !GetAtt EventManagerEventBus.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-EventBusArn"
+
+  EventCreatedRuleArn:
+    Description: ARN of the Event Created Rule
+    Value: !GetAtt EventCreatedRule.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-EventCreatedRuleArn"
+
+  SchedulerRoleArn:
+    Description: ARN of the EventBridge Scheduler Role
+    Value: !GetAtt EventBridgeSchedulerRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SchedulerRoleArn"

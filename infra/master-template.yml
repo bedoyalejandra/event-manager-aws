@@ -113,6 +113,22 @@ Resources:
         ReportsBucket: !GetAtt S3Stack.Outputs.ReportsBucketName
         EmailQueue: !GetAtt SQSSesStack.Outputs.EmailQueueUrl
         Environment: !Ref Environment
+        EventBusName: !Sub "EventManagerBus-${Environment}"
+        SchedulerRoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/EventBridgeSchedulerRole-${Environment}"
+
+  # ===========================================
+  # EventBridge Stack - Event-driven workflows
+  # ===========================================
+  EventBridgeStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [LambdasStack]
+    Properties:
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/eventbridge.yml'
+      Parameters:
+        Environment: !Ref Environment
+        CreateEventLambdaArn: !GetAtt LambdasStack.Outputs.CreateEventLambdaArn
+        DeleteEventLambdaArn: !GetAtt LambdasStack.Outputs.DeleteEventLambdaArn
+        CreateTaskLambdaArn: !GetAtt LambdasStack.Outputs.CreateTaskLambdaArn
 
   # ===========================================
   # API Gateway Stack - API REST
@@ -173,3 +189,15 @@ Outputs:
     Value: !GetAtt CognitoStack.Outputs.UserPoolId
     Export:
       Name: !Sub "${AWS::StackName}-CognitoUserPoolId"
+
+  EventBusName:
+    Description: EventBridge Event Bus name
+    Value: !GetAtt EventBridgeStack.Outputs.EventBusName
+    Export:
+      Name: !Sub "${AWS::StackName}-EventBusName"
+
+  EventBusArn:
+    Description: EventBridge Event Bus ARN
+    Value: !GetAtt EventBridgeStack.Outputs.EventBusArn
+    Export:
+      Name: !Sub "${AWS::StackName}-EventBusArn"
