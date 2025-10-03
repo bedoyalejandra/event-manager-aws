@@ -1,6 +1,8 @@
 const mysql = require("mysql2/promise");
 const AWS = require("aws-sdk");
 const secretsManager = new AWS.SecretsManager();
+const eventBridge = new AWS.EventBridge();
+const scheduler = new AWS.Scheduler();
 
 exports.handler = async (event) => {
   let connection;
@@ -85,13 +87,82 @@ exports.handler = async (event) => {
       capacity,
     ]);
     
-    console.log("✅ Event inserted successfully, ID:", result.insertId);
+    const eventId = result.insertId;
+    console.log("✅ Event inserted successfully, ID:", eventId);
+
+    // 5. Publish event to EventBridge for task creation
+    try {
+      console.log("📡 Publishing event to EventBridge...");
+      const eventBusName = process.env.EVENT_BUS_NAME;
+      
+      if (eventBusName) {
+        await eventBridge.putEvents({
+          Entries: [{
+            Source: 'event.manager',
+            DetailType: 'Event Created',
+            Detail: JSON.stringify({
+              eventId: eventId,
+              name: name,
+              description: description || "",
+              start_date: start_date,
+              duration: duration || 0,
+              capacity: capacity,
+            }),
+            EventBusName: eventBusName,
+          }],
+        }).promise();
+        console.log("✅ Event published to EventBridge successfully");
+      } else {
+        console.log("⚠️ EVENT_BUS_NAME not configured, skipping EventBridge publish");
+      }
+    } catch (ebError) {
+      console.error("⚠️ Error publishing to EventBridge (non-critical):", ebError.message);
+      // Don't fail the request if EventBridge publish fails
+    }
+
+    // 6. Create EventBridge Scheduler for automatic deletion at event time
+    try {
+      console.log("📅 Creating EventBridge Scheduler for event deletion...");
+      const schedulerRoleArn = process.env.SCHEDULER_ROLE_ARN;
+      const deleteEventLambdaArn = process.env.DELETE_EVENT_LAMBDA_ARN;
+      
+      if (schedulerRoleArn && deleteEventLambdaArn) {
+        // Parse the start_date to create a schedule
+        const eventDate = new Date(start_date);
+        const scheduleExpression = `at(${eventDate.toISOString().slice(0, 19)})`;
+        
+        await scheduler.createSchedule({
+          Name: `delete-event-${eventId}-${Date.now()}`,
+          Description: `Auto-delete event ${eventId} at scheduled time`,
+          ScheduleExpression: scheduleExpression,
+          FlexibleTimeWindow: {
+            Mode: 'OFF',
+          },
+          Target: {
+            Arn: deleteEventLambdaArn,
+            RoleArn: schedulerRoleArn,
+            Input: JSON.stringify({
+              eventId: eventId,
+              source: 'eventbridge-scheduler',
+            }),
+          },
+          State: 'ENABLED',
+        }).promise();
+        
+        console.log("✅ EventBridge Scheduler created successfully");
+      } else {
+        console.log("⚠️ Scheduler configuration not complete, skipping schedule creation");
+      }
+    } catch (schedError) {
+      console.error("⚠️ Error creating EventBridge Scheduler (non-critical):", schedError.message);
+      // Don't fail the request if Scheduler creation fails
+    }
 
     return {
       statusCode: 201,
       body: JSON.stringify({ 
         message: "Evento creado exitosamente",
-        eventId: result.insertId,
+        eventId: eventId,
         event: { name, description, start_date, duration, capacity }
       }),
     };

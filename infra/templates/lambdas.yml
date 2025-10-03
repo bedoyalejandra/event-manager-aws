@@ -23,6 +23,14 @@ Parameters:
     Default: dev
     AllowedValues: [dev, prod]
     Description: Environment name
+  EventBusName:
+    Type: String
+    Default: ""
+    Description: EventBridge Event Bus name (optional)
+  SchedulerRoleArn:
+    Type: String
+    Default: ""
+    Description: EventBridge Scheduler Role ARN (optional)
 
 Resources:
   # Lambda Execution Role
@@ -44,6 +52,26 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/AmazonSQSFullAccess
         - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess
+      Policies:
+        - PolicyName: EventBridgeSchedulerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - scheduler:CreateSchedule
+                  - scheduler:DeleteSchedule
+                  - scheduler:GetSchedule
+                  - scheduler:UpdateSchedule
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: scheduler.amazonaws.com
 
   # 1. Create Event Lambda
   CreateEventLambda:
@@ -63,6 +91,9 @@ Resources:
           DB_NAME: EventManagerDB
           DB_HOST: !Ref RDSClusterEndpoint
           ENVIRONMENT: !Ref Environment
+          EVENT_BUS_NAME: !Ref EventBusName
+          SCHEDULER_ROLE_ARN: !Ref SchedulerRoleArn
+          DELETE_EVENT_LAMBDA_ARN: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DeleteEventLambda-${Environment}"
       Role: !GetAtt LambdaExecutionRole.Arn
 
   # 2. Delete Event Lambda
@@ -261,6 +292,26 @@ Resources:
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
+  # 12. Create Task Lambda (triggered by EventBridge)
+  CreateTaskLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "CreateTaskLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: create-task/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
 
 Outputs:
   # Lambda Function ARNs
@@ -330,6 +381,12 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaArn"
 
+  CreateTaskLambdaArn:
+    Description: ARN of the Create Task Lambda function
+    Value: !GetAtt CreateTaskLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-CreateTaskLambdaArn"
+
   # Lambda Function Names
   CreateEventLambdaName:
     Description: Name of the Create Event Lambda function
@@ -397,3 +454,8 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaName"
 
+  CreateTaskLambdaName:
+    Description: Name of the Create Task Lambda function
+    Value: !Ref CreateTaskLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-CreateTaskLambdaName"
