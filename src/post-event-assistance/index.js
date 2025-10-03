@@ -1,7 +1,6 @@
 const mysql = require("mysql2/promise");
 const AWS = require("aws-sdk");
 const secretsManager = new AWS.SecretsManager();
-const scheduler = new AWS.Scheduler();
 
 exports.handler = async (event) => {
   let connection;
@@ -10,9 +9,7 @@ exports.handler = async (event) => {
     console.log("Environment variables:", {
       DB_HOST: process.env.DB_HOST,
       DB_NAME: process.env.DB_NAME,
-      RDS_SECRET_ARN: process.env.RDS_SECRET_ARN ? "✅ Present" : "❌ Missing",
-      SCHEDULER_ROLE_ARN: process.env.SCHEDULER_ROLE_ARN ? "✅ Present" : "❌ Missing",
-      SEND_EVENT_REMINDER_LAMBDA_ARN: process.env.SEND_EVENT_REMINDER_LAMBDA_ARN ? "✅ Present" : "❌ Missing"
+      RDS_SECRET_ARN: process.env.RDS_SECRET_ARN ? "✅ Present" : "❌ Missing"
     });
 
     // 1. Parse request body
@@ -166,51 +163,6 @@ exports.handler = async (event) => {
 
     console.log("✅ Event assistance registered successfully");
 
-    // 9. Create EventBridge Scheduler for email reminder 5 minutes before event
-    try {
-      console.log("📅 Creating EventBridge Scheduler for email reminder...");
-      const schedulerRoleArn = process.env.SCHEDULER_ROLE_ARN;
-      const sendEventReminderLambdaArn = process.env.SEND_EVENT_REMINDER_LAMBDA_ARN;
-      
-      if (schedulerRoleArn && sendEventReminderLambdaArn) {
-        // Calculate reminder time: 5 minutes before event start
-        const eventDate = new Date(eventData.start_date);
-        const reminderDate = new Date(eventDate.getTime() - 5 * 60 * 1000); // 5 minutes before
-        
-        // Ensure reminder is in the future
-        if (reminderDate > new Date()) {
-          const scheduleExpression = `at(${reminderDate.toISOString().slice(0, 19)})`;
-          
-          await scheduler.createSchedule({
-            Name: `reminder-event-${eventId}-${Date.now()}`,
-            Description: `Send email reminders for event ${eventData.name}`,
-            ScheduleExpression: scheduleExpression,
-            FlexibleTimeWindow: {
-              Mode: 'OFF',
-            },
-            Target: {
-              Arn: sendEventReminderLambdaArn,
-              RoleArn: schedulerRoleArn,
-              Input: JSON.stringify({
-                eventId: eventId,
-                source: 'eventbridge-scheduler',
-              }),
-            },
-            State: 'ENABLED',
-          }).promise();
-          
-          console.log("✅ EventBridge Scheduler created successfully for reminder");
-        } else {
-          console.log("⚠️ Event starts in less than 5 minutes, skipping reminder schedule");
-        }
-      } else {
-        console.log("⚠️ Scheduler configuration not complete, skipping reminder schedule creation");
-      }
-    } catch (schedError) {
-      console.error("⚠️ Error creating EventBridge Scheduler (non-critical):", schedError.message);
-      // Don't fail the request if Scheduler creation fails
-    }
-
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -221,8 +173,7 @@ exports.handler = async (event) => {
         userName: userName,
         userEmail: userEmail,
         ticketsPurchased: ticketsPurchased,
-        status: attendanceStatus || 'REGISTERED',
-        reminderScheduled: true
+        status: attendanceStatus || 'REGISTERED'
       }),
     };
   } catch (err) {

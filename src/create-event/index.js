@@ -149,12 +149,57 @@ exports.handler = async (event) => {
           State: 'ENABLED',
         }).promise();
         
-        console.log("✅ EventBridge Scheduler created successfully");
+        console.log("✅ EventBridge Scheduler for auto-disable created successfully");
       } else {
         console.log("⚠️ Scheduler configuration not complete, skipping schedule creation");
       }
     } catch (schedError) {
-      console.error("⚠️ Error creating EventBridge Scheduler (non-critical):", schedError.message);
+      console.error("⚠️ Error creating EventBridge Scheduler for auto-disable (non-critical):", schedError.message);
+      // Don't fail the request if Scheduler creation fails
+    }
+
+    // 7. Create EventBridge Scheduler for sending reminders 5 minutes before event
+    try {
+      console.log("📅 Creating EventBridge Scheduler for event reminders...");
+      const schedulerRoleArn = process.env.SCHEDULER_ROLE_ARN;
+      const sendEventReminderLambdaArn = process.env.SEND_EVENT_REMINDER_LAMBDA_ARN;
+      
+      if (schedulerRoleArn && sendEventReminderLambdaArn) {
+        // Calculate reminder time: 5 minutes before event start
+        const eventDate = new Date(start_date);
+        const reminderDate = new Date(eventDate.getTime() - 5 * 60 * 1000); // 5 minutes before
+        
+        // Only create if reminder time is in the future
+        if (reminderDate > new Date()) {
+          const reminderScheduleExpression = `at(${reminderDate.toISOString().slice(0, 19)})`;
+          
+          await scheduler.createSchedule({
+            Name: `reminder-event-${eventId}-${Date.now()}`,
+            Description: `Send reminders 5 minutes before event ${eventId}`,
+            ScheduleExpression: reminderScheduleExpression,
+            FlexibleTimeWindow: {
+              Mode: 'OFF',
+            },
+            Target: {
+              Arn: sendEventReminderLambdaArn,
+              RoleArn: schedulerRoleArn,
+              Input: JSON.stringify({
+                eventId: eventId,
+                source: 'eventbridge-scheduler',
+              }),
+            },
+            State: 'ENABLED',
+          }).promise();
+          
+          console.log("✅ EventBridge Scheduler for reminders created successfully");
+        } else {
+          console.log("⚠️ Event starts in less than 5 minutes, skipping reminder schedule");
+        }
+      } else {
+        console.log("⚠️ Scheduler configuration not complete for reminders, skipping");
+      }
+    } catch (schedError) {
+      console.error("⚠️ Error creating EventBridge Scheduler for reminders (non-critical):", schedError.message);
       // Don't fail the request if Scheduler creation fails
     }
 
