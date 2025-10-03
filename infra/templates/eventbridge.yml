@@ -73,7 +73,9 @@ Resources:
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
-                Resource: !Sub "${DisableEventLambdaArn}"
+                Resource: 
+                  - !Sub "${DisableEventLambdaArn}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SendEventReminderLambda-${Environment}"
 
   # ===========================================
   # Lambda Permissions for EventBridge
@@ -91,6 +93,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Sub "DisableEventLambda-${Environment}"
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+
+  # Permission for EventBridge Scheduler to invoke SendEventReminder Lambda
+  SendEventReminderSchedulerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub "SendEventReminderLambda-${Environment}"
       Action: lambda:InvokeFunction
       Principal: scheduler.amazonaws.com
 

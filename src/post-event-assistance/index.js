@@ -5,60 +5,16 @@ const secretsManager = new AWS.SecretsManager();
 exports.handler = async (event) => {
   let connection;
   try {
-    console.log("🚀 Starting Lambda execution");
+    console.log("🚀 Starting Post Event Assistance Lambda");
     console.log("Environment variables:", {
       DB_HOST: process.env.DB_HOST,
       DB_NAME: process.env.DB_NAME,
       RDS_SECRET_ARN: process.env.RDS_SECRET_ARN ? "✅ Present" : "❌ Missing"
     });
 
-    // 1. Obtener credenciales de Secrets Manager
-    console.log("📡 Fetching credentials from Secrets Manager...");
-    const secretArn = process.env.RDS_SECRET_ARN;
-    const secretValue = await secretsManager
-      .getSecretValue({ SecretId: secretArn })
-      .promise();
-    const creds = JSON.parse(secretValue.SecretString);
-    console.log("✅ Credentials fetched successfully");
-
-    // 2. Conexión a la DB
-    console.log("🔌 Attempting database connection...");
-    console.log("Connection config:", {
-      user: creds.username,
-      database: process.env.DB_NAME,
-      password: "***hidden***"
-    });
-        
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: creds.username,
-      password: creds.password,
-      database: process.env.DB_NAME,
-      connectTimeout: 10000,
-    });
-    console.log("✅ Database connection established");
-
-    // 3. Parsear body desde API Gateway
+    // 1. Parse request body
     console.log("📋 Parsing request body...");
-    console.log("Assistance received:", JSON.stringify(event, null, 2));
-    
     let bodyData;
-    try {
-      bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
-  } catch (parseError) {
-    console.error("❌ Error parsing JSON body:", parseError);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: "Invalid JSON format in request body" }),
-    };
-  }
-
-    if (!bodyData.eventId || !bodyData.ticketsPurchased || !bodyData.userId) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Faltan campos obligatorios: eventId, ticketsPurchased o userId" }),
-      };
-    }
     try {
       bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
     } catch (parseError) {
@@ -68,54 +24,130 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: "Invalid JSON format in request body" }),
       };
     }
-    
-    // Extract eventId from path parameters
-    const eventId = event.pathParameters?.id;
-    const { userId, attendanceStatus } = bodyData;
-    console.log("✅ Parsed event data:", { eventId, ...bodyData });
 
-    if (!eventId || !userId) {
+    // Extract all fields from body
+    const { eventId, userId, userName, userEmail, ticketsPurchased, attendanceStatus } = bodyData;
+    console.log("✅ Parsed event data:", { eventId, userId, userName, userEmail, ticketsPurchased, attendanceStatus });
+
+    // Validate required fields
+    if (!eventId || !userId || !userName || !userEmail || !ticketsPurchased) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Missing required fields: eventId (from path), userId (from body)" }),
+        body: JSON.stringify({ 
+          error: "Missing required fields: eventId, userId, userName, userEmail, ticketsPurchased" 
+        }),
       };
     }
 
-    // 4. Actualizar asistencia a eventos
-    console.log("📋 Updating event attendance...");
-    const query = `
-      UPDATE events
-      SET capacity = capacity - ?
-      WHERE id = ? AND capacity >= ? AND status = 'ACTIVE';
-    `;
+    // 2. Get database credentials from Secrets Manager
+    console.log("📡 Fetching credentials from Secrets Manager...");
+    const secretArn = process.env.RDS_SECRET_ARN;
+    const secretValue = await secretsManager
+      .getSecretValue({ SecretId: secretArn })
+      .promise();
+    const creds = JSON.parse(secretValue.SecretString);
+    console.log("✅ Credentials fetched successfully");
 
-    // Extraer los datos del cuerpo de la solicitud
-    if (!eventId || !ticketsPurchased) {
+    // 3. Connect to database
+    console.log("🔌 Attempting database connection...");
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: creds.username,
+      password: creds.password,
+      database: process.env.DB_NAME,
+      connectTimeout: 10000,
+    });
+    console.log("✅ Database connection established");
+
+    // 4. Get event details
+    console.log("📋 Fetching event details...");
+    const [eventRows] = await connection.execute(
+      "SELECT id, name, description, start_date, capacity, status FROM events WHERE id = ?",
+      [eventId]
+    );
+
+    if (eventRows.length === 0) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: "Event not found" }),
+      };
+    }
+
+    const eventData = eventRows[0];
+    console.log("✅ Event found:", eventData);
+
+    if (eventData.status !== 'ACTIVE') {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: "Event is not active" }),
       };
     }
 
-    // 6. Check current registrations
-    const [countRows] = await connection.execute(
-      "SELECT COUNT(*) as registrations FROM event_assistance WHERE event_id = ? AND attendance_status != 'CANCELLED'",
-      [eventId]
-    );
-
-    if (countRows[0].registrations >= eventData.capacity) {
+    // 5. Check if there's enough capacity for the tickets requested
+    if (eventData.capacity < ticketsPurchased) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Event is at full capacity" }),
+        body: JSON.stringify({ 
+          error: "Not enough capacity available",
+          availableCapacity: eventData.capacity,
+          requestedTickets: ticketsPurchased
+        }),
       };
     }
 
-    // 7. Register assistance
+    // 6. Reduce event capacity by tickets purchased
+    console.log(`📉 Reducing event capacity by ${ticketsPurchased} tickets...`);
+    const updateCapacityQuery = `
+      UPDATE events 
+      SET capacity = capacity - ? 
+      WHERE id = ? AND capacity >= ?
+    `;
+
+    const [updateResult] = await connection.execute(updateCapacityQuery, [
+      ticketsPurchased,
+      eventId,
+      ticketsPurchased
+    ]);
+
+    if (updateResult.affectedRows === 0) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ 
+          error: "Could not update capacity. Event may be at full capacity or tickets requested exceed available capacity.",
+          availableCapacity: eventData.capacity,
+          requestedTickets: ticketsPurchased
+        }),
+      };
+    }
+
+    console.log(`✅ Event capacity reduced. New capacity: ${eventData.capacity - ticketsPurchased}`);
+
+    // 7. Ensure event_assistance table has user_name, user_email and tickets_purchased columns
+    console.log("📋 Ensuring event_assistance table structure...");
+    const alterTableQuery = `
+      ALTER TABLE event_assistance 
+      ADD COLUMN IF NOT EXISTS user_name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS user_email VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS tickets_purchased INT DEFAULT 1
+    `;
+    
+    try {
+      await connection.execute(alterTableQuery);
+      console.log("✅ Table structure verified");
+    } catch (alterError) {
+      // Ignore error if columns already exist (MySQL doesn't support IF NOT EXISTS in ALTER)
+      console.log("⚠️ Table structure check:", alterError.message);
+    }
+
+    // 8. Register assistance with user details and tickets purchased
     console.log("📋 Registering event assistance...");
     const insertQuery = `
-      INSERT INTO event_assistance (event_id, user_id, attendance_status)
-      VALUES (?, ?, ?)
+      INSERT INTO event_assistance (event_id, user_id, user_name, user_email, tickets_purchased, attendance_status)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE 
+        user_name = VALUES(user_name),
+        user_email = VALUES(user_email),
+        tickets_purchased = tickets_purchased + VALUES(tickets_purchased),
         attendance_status = VALUES(attendance_status),
         updated_at = CURRENT_TIMESTAMP
     `;
@@ -123,6 +155,9 @@ exports.handler = async (event) => {
     const [result] = await connection.execute(insertQuery, [
       eventId,
       userId,
+      userName,
+      userEmail,
+      ticketsPurchased,
       attendanceStatus || 'REGISTERED'
     ]);
 
@@ -135,19 +170,27 @@ exports.handler = async (event) => {
         assistanceId: result.insertId || null,
         eventId: eventId,
         userId: userId,
+        userName: userName,
+        userEmail: userEmail,
+        ticketsPurchased: ticketsPurchased,
         status: attendanceStatus || 'REGISTERED'
       }),
     };
-    } catch (err) {
-    console.error("❌ Error actualizando asistencia a eventos:", err);
+  } catch (err) {
+    console.error("❌ Error in post-event-assistance:", err);
+    console.error("Error details:", {
+      message: err.message,
+      code: err.code,
+      stack: err.stack
+    });
     return {
       statusCode: 500,
       body: JSON.stringify({
-      message: "Ocurrió un error interno al intentar actualizar la capacidad del evento. Por favor, inténtalo de nuevo más tarde.",
-      error: err.message,
-      code: err.code || "UNKNOWN_ERROR",
-    }),
-};
+        error: "Failed to register event assistance",
+        message: err.message,
+        code: err.code || "UNKNOWN_ERROR",
+      }),
+    };
   } finally {
     if (connection) {
       console.log("🔌 Closing database connection");

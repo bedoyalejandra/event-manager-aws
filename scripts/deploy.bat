@@ -186,6 +186,22 @@ aws secretsmanager create-secret --name %SECRET_NAME% --description "Credentials
 for /f "tokens=*" %%i in ('aws secretsmanager describe-secret --secret-id %SECRET_NAME% --query ARN --output text') do set SECRET_ARN=%%i
 echo [SUCCESS] Secret created: %SECRET_ARN%
 
+REM Validate RDS values before continuing
+if "%DB_ENDPOINT%"=="" (
+    echo [ERROR] DB_ENDPOINT is empty
+    pause
+    exit /b 1
+)
+if "%SECRET_ARN%"=="" (
+    echo [ERROR] SECRET_ARN is empty
+    pause
+    exit /b 1
+)
+
+echo [SUCCESS] RDS values validated:
+echo [INFO]   DB Endpoint: %DB_ENDPOINT%
+echo [INFO]   Secret ARN: %SECRET_ARN%
+
 REM Deploy InitDB
 echo.
 echo === STEP 6/8: Initializing Database ===

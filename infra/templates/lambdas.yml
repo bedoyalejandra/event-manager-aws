@@ -94,6 +94,7 @@ Resources:
           EVENT_BUS_NAME: !Ref EventBusName
           SCHEDULER_ROLE_ARN: !Ref SchedulerRoleArn
           DISABLE_EVENT_LAMBDA_ARN: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DisableEventLambda-${Environment}"
+          SEND_EVENT_REMINDER_LAMBDA_ARN: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SendEventReminderLambda-${Environment}"
       Role: !GetAtt LambdaExecutionRole.Arn
 
   # 2. Delete Event Lambda
@@ -267,6 +268,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           EMAIL_QUEUE: !Ref EmailQueue
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -309,8 +311,19 @@ Resources:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
           DB_HOST: !Ref RDSClusterEndpoint
+          EMAIL_QUEUE: !Ref EmailQueue
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
+
+  # SQS Event Source Mapping for SendEmail Lambda
+  SendEmailEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:event-manager-email-queue-${Environment}"
+      FunctionName: !Ref SendEmailLambda
+      BatchSize: 10
+      Enabled: true
+      MaximumBatchingWindowInSeconds: 5
 
 
 Outputs:
