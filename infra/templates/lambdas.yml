@@ -311,8 +311,19 @@ Resources:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
           DB_HOST: !Ref RDSClusterEndpoint
+          EMAIL_QUEUE: !Ref EmailQueue
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
+
+  # SQS Event Source Mapping for SendEmail Lambda
+  SendEmailEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:event-manager-email-queue-${Environment}"
+      FunctionName: !Ref SendEmailLambda
+      BatchSize: 10
+      Enabled: true
+      MaximumBatchingWindowInSeconds: 5
 
 
 Outputs:
