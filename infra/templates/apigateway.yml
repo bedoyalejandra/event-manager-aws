@@ -29,6 +29,14 @@ Parameters:
   PostEventAssistanceLambdaArn:
     Type: String
     Description: ARN of the Post Event Assistance Lambda function
+
+  PostReportLambdaArn:
+    Type: String
+    Description: ARN the lamda function to create reports
+
+  GetReportLambdaArn:
+    Type: String
+    Description: ARN the lamda function to extract the reports
   
   Environment:
     Type: String
@@ -139,8 +147,8 @@ Resources:
       RestApiId: !Ref ApiGateway
 
 
-  # Post Event Assistance Method (POST /assistance)
-  PostEventAssistanceMethod:
+  # Post Event Assistance Method (POST /assistance) PostEventAssistanceMethod 
+  PostAssistanceMethod :
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
@@ -153,7 +161,46 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostEventAssistanceLambdaArn}/invocations"
 
-  # API Gateway Deployment
+
+  # Report Resource
+  ReportResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: report
+      RestApiId: !Ref ApiGateway
+
+    
+# POST /report
+  PostReportMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ReportResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostReportLambdaArn}/invocations"
+
+  
+# GET /report
+  GetReportMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ReportResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST  
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostReportLambdaArn}/invocations"
+
+  # API Gateway Deployment  
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -161,10 +208,13 @@ Resources:
       - GetActiveEventsMethod
       - UpdateEventMethod
       - DeleteEventMethod
-      - PostEventAssistanceMethod
+      - PostAssistanceMethod  
+      - PostReportMethod
+      - GetReportMethod
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
+
 
   # Lambda Permissions
   CreateEventLambdaPermission:
@@ -206,6 +256,17 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+
+  
+ 
+  PostReportLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PostReportLambdaArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+
 
 Outputs:
   ApiGatewayId:
