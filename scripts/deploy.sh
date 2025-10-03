@@ -284,6 +284,18 @@ fi
 SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --query 'ARN' --output text)
 log_success "Secret creado/actualizado exitosamente: $SECRET_ARN"
 
+# Validar que tenemos los valores necesarios antes de continuar
+if [[ -z "$DB_ENDPOINT" ]] || [[ -z "$SECRET_ARN" ]]; then
+    log_error "❌ Error: No se pudieron obtener DB_ENDPOINT o SECRET_ARN"
+    log_error "DB_ENDPOINT: ${DB_ENDPOINT:-'VACÍO'}"
+    log_error "SECRET_ARN: ${SECRET_ARN:-'VACÍO'}"
+    exit 1
+fi
+
+log_success "✅ Valores RDS validados:"
+log_info "  DB Endpoint: $DB_ENDPOINT"
+log_info "  Secret ARN: $SECRET_ARN"
+
 # PASO 8.5: Desplegando InitDB Stack para crear tablas
 show_progress "8.5" 11 "Creando InitDB Lambda Function"
 

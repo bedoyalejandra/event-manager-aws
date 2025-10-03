@@ -113,8 +113,56 @@ log_info "Limpiando archivo ZIP local..."
 rm lambda-functions.zip
 log_success "Limpieza completada"
 
-# PASO 4: Actualizar todas las funciones Lambda
-show_progress 4 4 "Actualizando Funciones Lambda"
+# PASO 4: Verificar y actualizar parámetros del stack si es necesario
+show_progress 4 5 "Verificando Parámetros del Stack"
+
+log_info "Verificando parámetros RDS en el stack principal..."
+CURRENT_DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name event-manager --query 'Stacks[0].Parameters[?ParameterKey==`DBEndpoint`].ParameterValue' --output text 2>/dev/null || echo "")
+CURRENT_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name event-manager --query 'Stacks[0].Parameters[?ParameterKey==`RDSSecretArn`].ParameterValue' --output text 2>/dev/null || echo "")
+
+# Si los parámetros están vacíos, obtener los valores reales y actualizar el stack
+if [[ -z "$CURRENT_DB_ENDPOINT" ]] || [[ -z "$CURRENT_SECRET_ARN" ]]; then
+    log_warning "Parámetros RDS vacíos detectados. Actualizando stack..."
+    
+    # Obtener valores reales
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    DB_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier event-manager-db-$ENVIRONMENT --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || echo "")
+    SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "event-app/db-credentials-$ENVIRONMENT-$ACCOUNT_ID" --query 'ARN' --output text 2>/dev/null || echo "")
+    
+    if [[ -n "$DB_ENDPOINT" ]] && [[ -n "$SECRET_ARN" ]]; then
+        log_info "Actualizando stack con parámetros RDS..."
+        log_info "  DB Endpoint: $DB_ENDPOINT"
+        log_info "  Secret ARN: $SECRET_ARN"
+        
+        aws cloudformation update-stack \
+            --stack-name event-manager \
+            --use-previous-template \
+            --parameters \
+                ParameterKey=S3LambdaBucket,UsePreviousValue=true \
+                ParameterKey=CreateS3Buckets,UsePreviousValue=true \
+                ParameterKey=ExistingLambdaCodeBucket,UsePreviousValue=true \
+                ParameterKey=ExistingSESConfigurationSet,UsePreviousValue=true \
+                ParameterKey=LambdaCodeKey,UsePreviousValue=true \
+                ParameterKey=Environment,UsePreviousValue=true \
+                ParameterKey=ExistingReportsBucket,UsePreviousValue=true \
+                ParameterKey=DBUsername,UsePreviousValue=true \
+                ParameterKey=CreateSESResources,UsePreviousValue=true \
+                ParameterKey=DBEndpoint,ParameterValue=$DB_ENDPOINT \
+                ParameterKey=RDSSecretArn,ParameterValue=$SECRET_ARN \
+            --capabilities CAPABILITY_NAMED_IAM >/dev/null 2>&1
+        
+        log_info "Esperando que el stack se actualice..."
+        aws cloudformation wait stack-update-complete --stack-name event-manager
+        log_success "✅ Stack actualizado con parámetros RDS"
+    else
+        log_warning "⚠️ No se pudieron obtener los valores RDS. Continuando sin actualizar..."
+    fi
+else
+    log_success "✅ Parámetros RDS ya están configurados correctamente"
+fi
+
+# PASO 5: Actualizar todas las funciones Lambda
+show_progress 5 5 "Actualizando Funciones Lambda"
 
 # Lista de todas las funciones Lambda
 LAMBDA_FUNCTIONS=(

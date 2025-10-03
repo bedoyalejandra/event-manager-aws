@@ -177,10 +177,46 @@ del lambda-functions.zip
 echo [SUCCESS] Cleanup completed
 
 REM ============================================
-REM STEP 4/4: Update All Lambda Functions
+REM STEP 4/5: Verify and Update Stack Parameters
 REM ============================================
 echo.
-echo === STEP 4/4: Updating Lambda Functions ===
+echo === STEP 4/5: Verifying Stack Parameters ===
+echo.
+
+echo [INFO] Verifying RDS parameters in main stack...
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager --query "Stacks[0].Parameters[?ParameterKey==`DBEndpoint`].ParameterValue" --output text 2^>nul') do set CURRENT_DB_ENDPOINT=%%i
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager --query "Stacks[0].Parameters[?ParameterKey==`RDSSecretArn`].ParameterValue" --output text 2^>nul') do set CURRENT_SECRET_ARN=%%i
+
+REM Check if parameters are empty
+if "%CURRENT_DB_ENDPOINT%"=="" (
+    echo [WARNING] RDS parameters are empty. Updating stack...
+    
+    REM Get actual values
+    for /f "tokens=*" %%i in ('aws rds describe-db-instances --db-instance-identifier event-manager-db-%ENVIRONMENT% --query "DBInstances[0].Endpoint.Address" --output text 2^>nul') do set DB_ENDPOINT=%%i
+    for /f "tokens=*" %%i in ('aws secretsmanager describe-secret --secret-id "event-app/db-credentials-%ENVIRONMENT%-%ACCOUNT_ID%" --query ARN --output text 2^>nul') do set SECRET_ARN=%%i
+    
+    if not "!DB_ENDPOINT!"=="" if not "!SECRET_ARN!"=="" (
+        echo [INFO] Updating stack with RDS parameters...
+        echo [INFO]   DB Endpoint: !DB_ENDPOINT!
+        echo [INFO]   Secret ARN: !SECRET_ARN!
+        
+        aws cloudformation update-stack --stack-name event-manager --use-previous-template --parameters ParameterKey=S3LambdaBucket,UsePreviousValue=true ParameterKey=CreateS3Buckets,UsePreviousValue=true ParameterKey=ExistingLambdaCodeBucket,UsePreviousValue=true ParameterKey=ExistingSESConfigurationSet,UsePreviousValue=true ParameterKey=LambdaCodeKey,UsePreviousValue=true ParameterKey=Environment,UsePreviousValue=true ParameterKey=ExistingReportsBucket,UsePreviousValue=true ParameterKey=DBUsername,UsePreviousValue=true ParameterKey=CreateSESResources,UsePreviousValue=true ParameterKey=DBEndpoint,ParameterValue=!DB_ENDPOINT! ParameterKey=RDSSecretArn,ParameterValue=!SECRET_ARN! --capabilities CAPABILITY_NAMED_IAM >nul 2>&1
+        
+        echo [INFO] Waiting for stack update to complete...
+        aws cloudformation wait stack-update-complete --stack-name event-manager
+        echo [SUCCESS] Stack updated with RDS parameters
+    ) else (
+        echo [WARNING] Could not retrieve RDS values. Continuing without update...
+    )
+) else (
+    echo [SUCCESS] RDS parameters are already configured correctly
+)
+
+REM ============================================
+REM STEP 5/5: Update All Lambda Functions
+REM ============================================
+echo.
+echo === STEP 5/5: Updating Lambda Functions ===
 echo.
 
 REM Define all Lambda functions
