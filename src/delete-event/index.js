@@ -6,6 +6,7 @@ exports.handler = async (event) => {
   let connection; // 👈 no volver a redeclarar
   try {
     console.log("🚀 Starting Lambda execution");
+    console.log("Event received:", JSON.stringify(event, null, 2));
     console.log("Environment variables:", {
       DB_HOST: process.env.DB_HOST,
       DB_NAME: process.env.DB_NAME,
@@ -36,17 +37,35 @@ exports.handler = async (event) => {
     });
     console.log("✅ Database connection established");
 
-    // 3) Validar ID desde el path
-    const eventId =
-      event.pathParameters?.id ||
-      (event.rawPath?.match?.(/\/events\/(\d+)(\/)?$/)?.[1]); 
+    // 3) Determine event ID from different sources
+    let eventId;
+    let source = "unknown";
+
+    // Check if triggered by EventBridge Scheduler
+    if (event.source === 'eventbridge-scheduler' || event.eventId) {
+      eventId = event.eventId;
+      source = "eventbridge-scheduler";
+      console.log("📅 Triggered by EventBridge Scheduler");
+    } 
+    // Check if triggered by API Gateway
+    else if (event.pathParameters?.id || event.rawPath) {
+      eventId = event.pathParameters?.id || 
+                (event.rawPath?.match?.(/\/events\/(\d+)(\/)?$/)?.[1]);
+      source = "api-gateway";
+      console.log("🌐 Triggered by API Gateway");
+    }
 
     if (!eventId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "El parámetro 'id' es obligatorio en la URL (/events/{id})" }),
+        body: JSON.stringify({ 
+          error: "El parámetro 'id' es obligatorio",
+          source: source 
+        }),
       };
     }
+
+    console.log(`🎯 Deleting event ID: ${eventId} (source: ${source})`);
 
     // 4) Ejecutar DELETE
     console.log("🗑️ Deleting event from database...", { eventId });
@@ -61,10 +80,14 @@ exports.handler = async (event) => {
 
     console.log("✅ Event deleted, affectedRows:", result.affectedRows);
 
-    
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: "Evento eliminado exitosamente", id: Number(eventId) }),
+      body: JSON.stringify({ 
+        message: "Evento eliminado exitosamente", 
+        id: Number(eventId),
+        source: source,
+        timestamp: new Date().toISOString()
+      }),
     };
 
   } catch (err) {
