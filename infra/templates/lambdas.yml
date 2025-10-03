@@ -267,6 +267,7 @@ Resources:
         Variables:
           RDS_SECRET_ARN: !Ref RDSSecretArn
           DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           EMAIL_QUEUE: !Ref EmailQueue
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -290,6 +291,8 @@ Resources:
           DB_HOST: !Ref RDSClusterEndpoint
           EMAIL_QUEUE: !Ref EmailQueue
           ENVIRONMENT: !Ref Environment
+          SCHEDULER_ROLE_ARN: !Ref SchedulerRoleArn
+          SEND_EVENT_REMINDER_LAMBDA_ARN: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SendEventReminderLambda-${Environment}"
       Role: !GetAtt LambdaExecutionRole.Arn
 
   # 12. Create Task Lambda (triggered by EventBridge)
