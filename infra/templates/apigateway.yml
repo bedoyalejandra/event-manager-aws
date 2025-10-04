@@ -32,16 +32,13 @@ Parameters:
 
   PostReportLambdaArn:
     Type: String
-    Description: ARN the lamda function to create reports
-
-  GetReportLambdaArn:
-    Type: String
-    Description: ARN the lamda function to extract the reports
-  
+    Description: ARN of the Lambda function to create/get reports
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, prod]
+    AllowedValues:
+      - dev
+      - prod
     Description: Environment name
 
 Resources:
@@ -66,7 +63,7 @@ Resources:
       ProviderARNs:
         - !Ref CognitoUserPoolArn
 
-  # Events Resource
+  # /events
   EventsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -74,7 +71,32 @@ Resources:
       PathPart: events
       RestApiId: !Ref ApiGateway
 
-  # Create Event Method (POST /events)
+  # /events/{id}
+  EventByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref EventsResource
+      PathPart: "{id}"
+      RestApiId: !Ref ApiGateway
+
+  # /assistance
+  AssistanceResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: assistance
+      RestApiId: !Ref ApiGateway
+
+  # /report
+  ReportResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: report
+      RestApiId: !Ref ApiGateway
+
+  # ------- Methods (Lambda Proxy) -------
+  # POST /events
   CreateEventMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -88,7 +110,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateEventLambdaArn}/invocations"
 
-  # Get Active Events Method (GET /events)
+  # GET /events
   GetActiveEventsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -102,15 +124,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetActiveEventsLambdaArn}/invocations"
 
-  # Event by ID Resource
-  EventByIdResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      ParentId: !Ref EventsResource
-      PathPart: "{id}"
-      RestApiId: !Ref ApiGateway
-
-  # Update Event Method (PUT /events/{id})
+  # PUT /events/{id}
   UpdateEventMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -123,8 +137,8 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateEventLambdaArn}/invocations"
-  
-  # Delete Event Method (DELETE /events/{id})
+
+  # DELETE /events/{id}
   DeleteEventMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -138,17 +152,8 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteEventLambdaArn}/invocations"
 
-  # Assistance Resource
-  AssistanceResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      ParentId: !GetAtt ApiGateway.RootResourceId
-      PathPart: assistance
-      RestApiId: !Ref ApiGateway
-
-
-  # Post Event Assistance Method (POST /assistance) PostEventAssistanceMethod 
-  PostAssistanceMethod :
+  # POST /assistance
+  PostAssistanceMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
@@ -161,17 +166,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostEventAssistanceLambdaArn}/invocations"
 
-
-  # Report Resource
-  ReportResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      ParentId: !GetAtt ApiGateway.RootResourceId
-      PathPart: report
-      RestApiId: !Ref ApiGateway
-
-    
-# POST /report
+  # POST /report
   PostReportMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -185,8 +180,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostReportLambdaArn}/invocations"
 
-  
-# GET /report
+  # GET /report
   GetReportMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -197,10 +191,143 @@ Resources:
       AuthorizerId: !Ref CognitoAuthorizer
       Integration:
         Type: AWS_PROXY
-        IntegrationHttpMethod: POST  
+        IntegrationHttpMethod: POST   # siempre POST hacia Lambda en proxy
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PostReportLambdaArn}/invocations"
 
-  # API Gateway Deployment  
+  # ------- CORS (OPTIONS + GatewayResponses) -------
+  OptionsEventsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref EventsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+            ResponseTemplates:
+              application/json: ""
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Credentials: true
+
+  OptionsEventByIdMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref EventByIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+            ResponseTemplates:
+              application/json: ""
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Credentials: true
+
+  OptionsAssistanceMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref AssistanceResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+            ResponseTemplates:
+              application/json: ""
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Credentials: true
+
+  OptionsReportMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ReportResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+            ResponseTemplates:
+              application/json: ""
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Credentials: true
+
+  GatewayResponseDefault4xx:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResponseType: DEFAULT_4XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+
+  GatewayResponseDefault5xx:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResponseType: DEFAULT_5XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+
+  # ------- Deployment -------
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -208,22 +335,27 @@ Resources:
       - GetActiveEventsMethod
       - UpdateEventMethod
       - DeleteEventMethod
-      - PostAssistanceMethod  
+      - PostAssistanceMethod
       - PostReportMethod
       - GetReportMethod
+      - OptionsEventsMethod
+      - OptionsEventByIdMethod
+      - OptionsAssistanceMethod
+      - OptionsReportMethod
+      - GatewayResponseDefault4xx
+      - GatewayResponseDefault5xx
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
 
-
-  # Lambda Permissions
+  # ------- Lambda Permissions -------
   CreateEventLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref CreateEventLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*"
 
   GetActiveEventsLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -231,7 +363,7 @@ Resources:
       FunctionName: !Ref GetActiveEventsLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*"
 
   UpdateEventLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -239,7 +371,7 @@ Resources:
       FunctionName: !Ref UpdateEventLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*"
 
   DeleteEventLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -247,7 +379,7 @@ Resources:
       FunctionName: !Ref DeleteEventLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*"
 
   PostEventAssistanceLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -255,18 +387,15 @@ Resources:
       FunctionName: !Ref PostEventAssistanceLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*"
 
-  
- 
   PostReportLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref PostReportLambdaArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*"
-
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*"
 
 Outputs:
   ApiGatewayId:
