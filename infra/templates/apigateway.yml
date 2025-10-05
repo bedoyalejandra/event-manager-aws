@@ -2,6 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: API Gateway for Event Manager application
 
 Parameters:  
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID for authorization
   CognitoUserPoolArn:
     Type: String
     Description: Cognito User Pool ARN for authorization
