@@ -315,6 +315,27 @@ Resources:
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
+  # 13. POST report lambda (POS / GET)
+  PostReportLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "PostReportLambda-${Environment}"
+      Runtime: nodejs18.x
+      Handler: post-report/index.handler
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
+          EMAIL_QUEUE: !Ref EmailQueue
+          ENVIRONMENT: !Ref Environment
+      Role: !GetAtt LambdaExecutionRole.Arn
+
   # SQS Event Source Mapping for SendEmail Lambda
   SendEmailEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
@@ -393,6 +414,12 @@ Outputs:
     Value: !GetAtt PostEventAssistanceLambda.Arn
     Export:
       Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaArn"
+
+  PostReportLambdaArn:
+    Description: ARN of the Lambda function to create/get reports
+    Value: !GetAtt PostReportLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PostReportLambdaArn"
 
   CreateTaskLambdaArn:
     Description: ARN of the Create Task Lambda function

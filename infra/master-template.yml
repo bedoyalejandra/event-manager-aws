@@ -146,6 +146,7 @@ Resources:
         DeleteEventLambdaArn: !GetAtt LambdasStack.Outputs.DeleteEventLambdaArn
         GetActiveEventsLambdaArn: !GetAtt LambdasStack.Outputs.GetActiveEventsLambdaArn
         PostEventAssistanceLambdaArn: !GetAtt LambdasStack.Outputs.PostEventAssistanceLambdaArn
+        PostReportLambdaArn: !GetAtt LambdasStack.Outputs.PostReportLambdaArn
         Environment: !Ref Environment
 
   # ===========================================
