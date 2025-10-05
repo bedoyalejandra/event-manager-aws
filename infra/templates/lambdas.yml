@@ -315,7 +315,7 @@ Resources:
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn
 
-  # 13. POST report lambda (POS / GET)
+  # 13. POST report lambda (POS)
   PostReportLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -385,11 +385,7 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-GenerateReportLambdaArn"
 
-  GetReportLambdaArn:
-    Description: ARN of the Get Report Lambda function
-    Value: !GetAtt GetReportLambda.Arn
-    Export:
-      Name: !Sub "${AWS::StackName}-GetReportLambdaArn"
+  
 
   ProcessReportDataLambdaArn:
     Description: ARN of the Process Report Data Lambda function
@@ -416,10 +412,16 @@ Outputs:
       Name: !Sub "${AWS::StackName}-PostEventAssistanceLambdaArn"
 
   PostReportLambdaArn:
-    Description: ARN of the Lambda function to create/get reports
+    Description: ARN of the Lambda function to create reports
     Value: !GetAtt PostReportLambda.Arn
     Export:
       Name: !Sub "${AWS::StackName}-PostReportLambdaArn"
+  
+  GetReportLambdaArn:
+    Description: ARN of the Get Report Lambda function
+    Value: !GetAtt GetReportLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GetReportLambdaArn"
 
   CreateTaskLambdaArn:
     Description: ARN of the Create Task Lambda function
@@ -433,6 +435,12 @@ Outputs:
     Value: !Ref CreateEventLambda
     Export:
       Name: !Sub "${AWS::StackName}-CreateEventLambdaName"
+
+  PostReportLambdaName:
+    Description: Lambda function name Create or update reports
+    Value: !Ref PostReportLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-PostReportLambdaName"
 
   DeleteEventLambdaName:
     Description: Name of the Delete Event Lambda function
@@ -456,7 +464,7 @@ Outputs:
     Description: Name of the Get Active Events Lambda function
     Value: !Ref GetActiveEventsLambda
     Export:
-      Name: !Sub "${AWS::StackName}-GetActiveEventsLambdaName"
+      Name: !Sub "${AWS::StackName}-GetActiveEventsLambdaName"  
 
   GenerateReportLambdaName:
     Description: Name of the Generate Report Lambda function
