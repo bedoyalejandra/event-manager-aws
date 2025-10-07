@@ -150,6 +150,8 @@ Resources:
       HttpMethod: GET
       AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref CognitoAuthorizer
+      RequestParameters:
+        method.request.querystring.id: false
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST   

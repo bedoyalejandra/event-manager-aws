@@ -211,6 +211,9 @@ Resources:
       Timeout: 30
       Environment:
         Variables:
+          RDS_SECRET_ARN: !Ref RDSSecretArn
+          DB_NAME: EventManagerDB
+          DB_HOST: !Ref RDSClusterEndpoint
           REPORTS_BUCKET: !Ref ReportsBucket
           ENVIRONMENT: !Ref Environment
       Role: !GetAtt LambdaExecutionRole.Arn

@@ -29,7 +29,7 @@ exports.handler = async (event) => {
       password: "***hidden***"
     });
         
-    const connection = await mysql.createConnection({
+    connection = await mysql.createConnection({
       host: process.env.DB_HOST,
       user: creds.username,
       password: creds.password,
@@ -38,54 +38,48 @@ exports.handler = async (event) => {
     });
     console.log("✅ Database connection established");
 
-    // 3. Parsear body desde API Gateway
-    console.log("📋 Parsing request body...");
-    console.log("Report received:", JSON.stringify(event, null, 2));
+    // 3. Obtener ID desde query parameters
+    console.log("📋 Parsing request...");
+    console.log("Event received:", JSON.stringify(event, null, 2));
     
-    if (!event.body) {
+    const reportId = event.queryStringParameters?.id;
+    
+    if (!reportId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Request body is required" }),
+        body: JSON.stringify({ error: "Report ID is required as query parameter" }),
       };
     }
     
-    let bodyData;
-    try {
-      bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
-    } catch (parseError) {
-      console.error("❌ Error parsing JSON body:", parseError);
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Invalid JSON format in request body" }),
-      };
-    }
-    
-    const { id } = bodyData;
-    console.log("✅ Parsed event data:", bodyData);
+    console.log("✅ Report ID:", reportId);
 
-    if (!id) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Campos obligatorios faltantes" }),
-      };
-    }
-
-    // 3. Consultar eventos activos
-    console.log("📋 Querying active events...");
+    // 4. Consultar reporte por ID
+    console.log("📋 Querying report...");
     const [rows] = await connection.execute(
-      "SELECT * FROM report WHERE id = '?'"
+      "SELECT * FROM report WHERE id = ?",
+      [reportId]
     );
-    console.log(`✅ Retrieved ${rows.length} active events`);
+    console.log(`✅ Retrieved ${rows.length} report(s)`);
 
     // Mostrar los resultados obtenidos
-    console.log("📋 Active events data:", JSON.stringify(rows, null, 2));
+    console.log("📋 Report data:", JSON.stringify(rows, null, 2));
+
+    if (rows.length === 0) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({
+          message: "Report not found",
+          id: reportId
+        }),
+      };
+    }
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        message: `Se encontraron ${rows.length} reortes.`,
-        function: "get-active-report",
-        events: rows
+        message: "Report retrieved successfully",
+        function: "get-report",
+        report: rows[0]
       }),
     };
   } catch (error) {
