@@ -145,8 +145,6 @@ aws cloudformation deploy \
 ./scripts/deploy.sh
 ```
 
-**Para instrucciones detalladas de Windows, ver:** [`WINDOWS_DEPLOYMENT.md`](WINDOWS_DEPLOYMENT.md)
-
 #### ✨ Scripts Automatizados Disponibles
 
 **Despliegue Completo:**

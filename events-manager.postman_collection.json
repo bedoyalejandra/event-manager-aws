@@ -1,0 +1,552 @@
+{
+	"info": {
+		"_postman_id": "5db7fd56-af1c-4643-9374-436fe50c866a",
+		"name": "events-manager",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "10412154",
+		"_collection_link": "https://bedoyalejandra-1375.postman.co/workspace/7c267f7d-be5b-405a-bed1-abf902f37994/collection/10412154-5db7fd56-af1c-4643-9374-436fe50c866a?action=share&source=collection_link&creator=10412154"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "SignUp",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									""
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/x-amz-json-1.1",
+								"type": "text"
+							},
+							{
+								"key": "X-Amz-Target",
+								"value": "AWSCognitoIdentityProviderService.SignUp",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ClientId\": \"{{CLIENT_ID}}\",\n  \"Username\": \"user\",\n  \"Password\": \"Password123!\",\n  \"UserAttributes\": [\n    {\n      \"Name\": \"email\",\n      \"Value\": \"user@mailinator.com\"\n    },\n    {\n      \"Name\": \"given_name\",\n      \"Value\": \"Admin\"\n    },\n    {\n      \"Name\": \"family_name\",\n      \"Value\": \"User\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://cognito-idp.{{REGION}}.amazonaws.com/",
+							"protocol": "https",
+							"host": [
+								"cognito-idp",
+								"{{REGION}}",
+								"amazonaws",
+								"com"
+							],
+							"path": [
+								""
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Confirm User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									""
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/x-amz-json-1.1",
+								"type": "text"
+							},
+							{
+								"key": "X-Amz-Target",
+								"value": "AWSCognitoIdentityProviderService.ConfirmSignUp",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ClientId\": \"{{CLIENT_ID}}\",\n  \"Username\": \"user\",\n  \"ConfirmationCode\": \"885535\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://cognito-idp.{{REGION}}.amazonaws.com/",
+							"protocol": "https",
+							"host": [
+								"cognito-idp",
+								"{{REGION}}",
+								"amazonaws",
+								"com"
+							],
+							"path": [
+								""
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "LogIn",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Authentication successful\", function () {",
+									"    pm.response.to.have.status(200);",
+									"    const responseJson = pm.response.json();",
+									"    ",
+									"    if (responseJson.AuthenticationResult) {",
+									"        const token = responseJson.AuthenticationResult.IdToken;",
+									"        pm.environment.set(\"TOKEN\", token);",
+									"        console.log(\"✅ Token saved successfully!\");",
+									"        console.log(\"🔑 Token preview: \" + token.substring(0, 50) + \"...\");",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/x-amz-json-1.1",
+								"type": "text"
+							},
+							{
+								"key": "X-Amz-Target",
+								"value": "AWSCognitoIdentityProviderService.InitiateAuth",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ClientId\": \"{{CLIENT_ID}}\",\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"user\",\n    \"PASSWORD\": \"Password123!\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://cognito-idp.{{REGION}}.amazonaws.com/",
+							"protocol": "https",
+							"host": [
+								"cognito-idp",
+								"{{REGION}}",
+								"amazonaws",
+								"com"
+							],
+							"path": [
+								""
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Events",
+			"item": [
+				{
+					"name": "Actualizar event",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									""
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{TOKEN}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Proxy-Authorization",
+								"value": "Bearer eyJraWQiOiJ6bmhMRk1WNzR1N01aTzRcLzI4dXVidjBFNE85NTJmd0xUejE3dHhOMzlDbz0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIyODYxMDNkMC02MGMxLTcwMTgtNGY1My04N2M5ZjAxOGQ0YmUiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaXNzIjoiaHR0cHM6XC9cL2NvZ25pdG8taWRwLnVzLXdlc3QtMi5hbWF6b25hd3MuY29tXC91cy13ZXN0LTJfRzdXb0dldFQ5IiwiY29nbml0bzp1c2VybmFtZSI6InVzZXIiLCJnaXZlbl9uYW1lIjoiQWRtaW4iLCJvcmlnaW5fanRpIjoiYjcyYjMyMmMtMmQ1OS00NmE2LThkNGItNWY1NTg5ODYwNjA1IiwiYXVkIjoiNmk1OWZnbms0azU1MGJxZXE4bXE2bTd0anMiLCJldmVudF9pZCI6ImZmMzA0NjAyLWRkMjctNDFkNi1iZDEzLTJjYmU1MWEzNmQ2OCIsInRva2VuX3VzZSI6ImlkIiwiYXV0aF90aW1lIjoxNzU5MDI2NjUzLCJleHAiOjE3NTkxMTMwNTMsImlhdCI6MTc1OTAyNjY1MywiZmFtaWx5X25hbWUiOiJVc2VyIiwianRpIjoiYmM2MDViNDgtZjE0OC00OTMyLWI0MTUtYTYxZjA5NDM4YTRhIiwiZW1haWwiOiJ1c2VyQG1haWxpbmF0b3IuY29tIn0.FoXFXyuxssNaN6NDLIEk03z8mVyG2WzxYZKNPJGMD3IxXSvNsiVAI2BD0f7D6LjxDTKV8sj_QWm59udsSmoF5-ELy8RG622llbqRSL5WPzyLreK_RBO5NDiuGM7WxMxHzLzbwkTRofPYrzP3Jp3o0mAs5Vz73YQp8zx2v7isuSN0a9XfOSTNp-JiHPIi06Ieko5e4BJlIwq47OrqKsBtXRzeidXO6enuD5lFNvBVtiwOysUOLBxjAKWe63U_Rr0NQ60UT7Myb2nYfVzVT04uPfOihLM1TKTVMBZ9ce96CbEbTqhY9jPx5jydG38eUjrZfEuxzRpcPyYpI4rHLuCC_A",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "\n{\n  \"name\": \"Reunion de QA y DEV\",\n  \"description\": \"This is a test event created via API\",\n  \"start_date\": \"2025-10-05\",\n  \"duration\": 1,\n  \"capacity\": 1000,\n  \"status\": \"CLOSED\"\n}\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/events/5",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"events",
+								"5"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete event",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{TOKEN}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Proxy-Authorization",
+								"value": "eyJraWQiOiJ6bmhMRk1WNzR1N01aTzRcLzI4dXVidjBFNE85NTJmd0xUejE3dHhOMzlDbz0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIyODYxMDNkMC02MGMxLTcwMTgtNGY1My04N2M5ZjAxOGQ0YmUiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaXNzIjoiaHR0cHM6XC9cL2NvZ25pdG8taWRwLnVzLXdlc3QtMi5hbWF6b25hd3MuY29tXC91cy13ZXN0LTJfRzdXb0dldFQ5IiwiY29nbml0bzp1c2VybmFtZSI6InVzZXIiLCJnaXZlbl9uYW1lIjoiQWRtaW4iLCJvcmlnaW5fanRpIjoiYjcyYjMyMmMtMmQ1OS00NmE2LThkNGItNWY1NTg5ODYwNjA1IiwiYXVkIjoiNmk1OWZnbms0azU1MGJxZXE4bXE2bTd0anMiLCJldmVudF9pZCI6ImZmMzA0NjAyLWRkMjctNDFkNi1iZDEzLTJjYmU1MWEzNmQ2OCIsInRva2VuX3VzZSI6ImlkIiwiYXV0aF90aW1lIjoxNzU5MDI2NjUzLCJleHAiOjE3NTkxMTMwNTMsImlhdCI6MTc1OTAyNjY1MywiZmFtaWx5X25hbWUiOiJVc2VyIiwianRpIjoiYmM2MDViNDgtZjE0OC00OTMyLWI0MTUtYTYxZjA5NDM4YTRhIiwiZW1haWwiOiJ1c2VyQG1haWxpbmF0b3IuY29tIn0.FoXFXyuxssNaN6NDLIEk03z8mVyG2WzxYZKNPJGMD3IxXSvNsiVAI2BD0f7D6LjxDTKV8sj_QWm59udsSmoF5-ELy8RG622llbqRSL5WPzyLreK_RBO5NDiuGM7WxMxHzLzbwkTRofPYrzP3Jp3o0mAs5Vz73YQp8zx2v7isuSN0a9XfOSTNp-JiHPIi06Ieko5e4BJlIwq47OrqKsBtXRzeidXO6enuD5lFNvBVtiwOysUOLBxjAKWe63U_Rr0NQ60UT7Myb2nYfVzVT04uPfOihLM1TKTVMBZ9ce96CbEbTqhY9jPx5jydG38eUjrZfEuxzRpcPyYpI4rHLuCC_A",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/events/1",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"events",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create event",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{TOKEN}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Event bridge test\",\n  \"description\": \"This is a test event created via API\",\n  \"start_date\": \"2025-10-03T02:38:00Z\",\n  \"duration\": 1,\n  \"capacity\": 10\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/events",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"events"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Report",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{TOKEN}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tickets_sold\": \"140\",\n  \"event_name\": \"sakira\",\n  \"start_date\": \"junio\"  \n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/report",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"report"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Post event assistance",
+					"protocolProfileBehavior": {
+						"disabledSystemHeaders": {}
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{TOKEN}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"eventId\": 14,\n  \"userId\": \"123\",\n  \"userName\": \"Alejandra Bedoya\",\n  \"userEmail\": \"alejandrabedoya00@gmail.com\",\n  \"ticketsPurchased\": 2,\n  \"attendanceStatus\": \"REGISTERED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/assistance",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"assistance"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetActiveEvents",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{TOKEN}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/events",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"events"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Report",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{TOKEN}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"id\": \"2\"   \r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/report",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"report"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
