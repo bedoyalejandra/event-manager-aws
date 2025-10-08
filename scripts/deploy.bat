@@ -173,79 +173,56 @@ if !errorlevel! neq 0 (
 )
 echo [SUCCESS] Template validated
 
-REM Create RDS (simplified - assumes it doesn't exist)
+REM Get VPC information
 echo.
-echo === STEP 5/8: Creating Database ===
+echo === STEP 5/8: Getting VPC Information ===
 echo.
-echo [WARNING] This step may take 10-15 minutes. Please be patient...
-
-REM Check if RDS instance exists
-aws rds describe-db-instances --db-instance-identifier event-manager-db-%ENVIRONMENT% >nul 2>&1
-if !errorlevel! equ 0 (
-    echo [WARNING] Database already exists
-    for /f "tokens=*" %%i in ('aws rds describe-db-instances --db-instance-identifier event-manager-db-%ENVIRONMENT% --query "DBInstances[0].Endpoint.Address" --output text') do set DB_ENDPOINT=%%i
-) else (
-    echo [INFO] Creating RDS instance...
-    
-    REM Create security group
-    aws ec2 describe-security-groups --group-names event-manager-rds-sg >nul 2>&1
-    if !errorlevel! neq 0 (
-        for /f "tokens=*" %%i in ('aws ec2 create-security-group --group-name event-manager-rds-sg --description "Security group for Event Manager RDS MySQL" --query GroupId --output text') do set SG_ID=%%i
-        aws ec2 authorize-security-group-ingress --group-id !SG_ID! --protocol tcp --port 3306 --cidr 0.0.0.0/0
-    ) else (
-        for /f "tokens=*" %%i in ('aws ec2 describe-security-groups --group-names event-manager-rds-sg --query "SecurityGroups[0].GroupId" --output text') do set SG_ID=%%i
+echo [INFO] Getting default VPC and subnets...
+for /f "tokens=*" %%i in ('aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" --query "Vpcs[0].VpcId" --output text') do set VPC_ID=%%i
+for /f "tokens=1,2 delims= " %%i in ('aws ec2 describe-subnets --filters "Name=default-for-az,Values=true" --query "Subnets[0:2].[SubnetId]" --output text') do (
+    if not defined SUBNET_1 (
+        set SUBNET_1=%%i
+    ) else if not defined SUBNET_2 (
+        set SUBNET_2=%%i
     )
-    
-    REM Create RDS instance
-    aws rds create-db-instance --db-instance-identifier event-manager-db-%ENVIRONMENT% --db-instance-class db.t3.micro --engine mysql --engine-version 8.0.43 --master-username %DB_USERNAME% --master-user-password EventManager123! --allocated-storage 20 --db-name EventManagerDB --vpc-security-group-ids !SG_ID! --publicly-accessible --no-multi-az --storage-type gp2 --backup-retention-period 0
-    
-    echo [INFO] Waiting for database to be available...
-    aws rds wait db-instance-available --db-instance-identifier event-manager-db-%ENVIRONMENT%
-    
-    for /f "tokens=*" %%i in ('aws rds describe-db-instances --db-instance-identifier event-manager-db-%ENVIRONMENT% --query "DBInstances[0].Endpoint.Address" --output text') do set DB_ENDPOINT=%%i
 )
 
-echo [SUCCESS] Database ready: %DB_ENDPOINT%
-
-REM Create secret
-echo [INFO] Creating Secrets Manager secret...
-set SECRET_NAME=event-app/db-credentials-%ENVIRONMENT%-%ACCOUNT_ID%
-aws secretsmanager create-secret --name %SECRET_NAME% --description "Credentials for Event Manager database" --secret-string "{\"username\":\"%DB_USERNAME%\",\"password\":\"EventManager123!\"}" >nul 2>&1
-for /f "tokens=*" %%i in ('aws secretsmanager describe-secret --secret-id %SECRET_NAME% --query ARN --output text') do set SECRET_ARN=%%i
-echo [SUCCESS] Secret created: %SECRET_ARN%
-
-REM Validate RDS values before continuing
-if "%DB_ENDPOINT%"=="" (
-    echo [ERROR] DB_ENDPOINT is empty
+if "%VPC_ID%"=="" (
+    echo [ERROR] Could not find default VPC
     pause
     exit /b 1
 )
-if "%SECRET_ARN%"=="" (
-    echo [ERROR] SECRET_ARN is empty
+if "%SUBNET_1%"=="" (
+    echo [ERROR] Could not find subnets
     pause
     exit /b 1
 )
 
-echo [SUCCESS] RDS values validated:
-echo [INFO]   DB Endpoint: %DB_ENDPOINT%
-echo [INFO]   Secret ARN: %SECRET_ARN%
+set SUBNET_IDS=%SUBNET_1%,%SUBNET_2%
+echo [SUCCESS] VPC Information:
+echo [INFO]   VPC ID: %VPC_ID%
+echo [INFO]   Subnet IDs: %SUBNET_IDS%
 
-REM Deploy InitDB
+REM Database will be created by CloudFormation
 echo.
-echo === STEP 6/8: Initializing Database ===
+echo === STEP 6/8: Database Configuration ===
 echo.
-aws cloudformation deploy --template-file infra/templates/initdb.yml --stack-name event-manager-initdb --capabilities CAPABILITY_NAMED_IAM --parameter-overrides RDSSecretArn=%SECRET_ARN% RDSClusterEndpoint=%DB_ENDPOINT% LambdaCodeBucket=%LAMBDA_BUCKET_NAME% LambdaCodeKey=lambda-functions.zip Environment=%ENVIRONMENT%
-
-for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager-initdb --query "Stacks[0].Outputs[?OutputKey==`InitDBLambdaName`].OutputValue" --output text') do set INIT_LAMBDA_NAME=%%i
-aws lambda invoke --function-name %INIT_LAMBDA_NAME% --payload "{}" %TEMP%\init-response.json >nul
-echo [SUCCESS] Database initialized
+echo [INFO] RDS will be deployed automatically by CloudFormation in the main stack
+echo [INFO] RDS will be configured with:
+echo [INFO]   - VPC: %VPC_ID%
+echo [INFO]   - Subnets: %SUBNET_IDS%
+echo [INFO]   - Security Group: Auto-created with MySQL port 3306 open
+echo [INFO]   - Publicly Accessible: Yes (for Lambda connectivity)
+echo [SUCCESS] RDS configuration ready
 
 REM Deploy main stack
 echo.
 echo === STEP 7/8: Deploying Main Infrastructure ===
 echo.
 echo [WARNING] This step may take 15-20 minutes. Please be patient...
-aws cloudformation deploy --template-file infra/master-template.yml --stack-name event-manager --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides Environment=%ENVIRONMENT% DBUsername=%DB_USERNAME% S3LambdaBucket=%LAMBDA_BUCKET_NAME% LambdaCodeKey=lambda-functions.zip DBEndpoint=%DB_ENDPOINT% RDSSecretArn=%SECRET_ARN%
+echo [INFO] Deploying main stack with RDS, InitDB, and all Lambda functions...
+echo.
+aws cloudformation deploy --template-file infra/master-template.yml --stack-name event-manager --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides Environment=%ENVIRONMENT% DBUsername=%DB_USERNAME% S3LambdaBucket=%LAMBDA_BUCKET_NAME% LambdaCodeKey=lambda-functions.zip VpcId=%VPC_ID% SubnetIds=%SUBNET_IDS% CreateS3Buckets=false ExistingLambdaCodeBucket=%LAMBDA_BUCKET_NAME% ExistingReportsBucket=%REPORTS_BUCKET_NAME% CreateSESResources=false ExistingDBSecretArn=""
 if !errorlevel! neq 0 (
     echo [ERROR] Main stack deployment failed
     pause
@@ -259,6 +236,7 @@ echo.
 echo [INFO] Getting deployment information...
 for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager --query "Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue" --output text') do set API_URL=%%i
 for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager --query "Stacks[0].Outputs[?OutputKey==`CognitoUserPoolId`].OutputValue" --output text') do set USER_POOL_ID=%%i
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager --query "Stacks[0].Outputs[?OutputKey==`DBEndpoint`].OutputValue" --output text') do set DB_ENDPOINT=%%i
 
 echo.
 echo ================================================================
@@ -269,12 +247,23 @@ echo IMPORTANT INFORMATION:
 echo   API Gateway URL: %API_URL%
 echo   Cognito User Pool ID: %USER_POOL_ID%
 echo   Database Endpoint: %DB_ENDPOINT%
+echo   VPC ID: %VPC_ID%
+echo.
+echo [SUCCESS] All components deployed:
+echo   ✅ RDS MySQL Database (with VPC configuration)
+echo   ✅ InitDB Lambda (database initialized automatically)
+echo   ✅ All Lambda Functions
+echo   ✅ API Gateway
+echo   ✅ Cognito User Pool
+echo   ✅ S3 Buckets
+echo   ✅ SQS and SES
+echo   ✅ Step Functions
+echo   ✅ EventBridge
 echo.
 echo Deployment completed successfully at %DATE% %TIME%
 echo.
 
 REM Clean up
 del lambda-functions.zip >nul 2>&1
-del %TEMP%\init-response.json >nul 2>&1
 
 pause

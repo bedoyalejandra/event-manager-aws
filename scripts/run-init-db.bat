@@ -1,6 +1,20 @@
 @echo off
 REM 🗄️ Windows Batch Script to Run InitDB - Event Manager AWS
 REM This script executes the InitDB Lambda function to create/update the database model
+REM
+REM USAGE:
+REM   scripts\run-init-db.bat [environment]
+REM
+REM PURPOSE:
+REM   - Create database tables if they don't exist
+REM   - Update table structure (ALTER TABLE with IF NOT EXISTS)
+REM   - Create/update indexes for optimization
+REM   - Verify database connectivity
+REM
+REM USE CASES:
+REM   1. First time: Creates all tables and indexes
+REM   2. Update: Executes schema changes without losing data
+REM   3. Verification: Tests connectivity and database status
 
 setlocal enabledelayedexpansion
 
@@ -15,12 +29,28 @@ if "%AWS_REGION%"=="" (
 if "%AWS_REGION%"=="" set AWS_REGION=us-west-2
 
 echo ========================================
-echo RUN INIT DB - Event Manager AWS
+echo RUN INIT DB - Database Structure Update
 echo ========================================
 echo.
 echo Configuration:
 echo   - Environment: %ENVIRONMENT%
 echo   - AWS Region: %AWS_REGION%
+echo.
+echo [WARNING] This script will execute changes to the database
+echo.
+echo This script will perform the following operations:
+echo   * Create tables if they don't exist (CREATE TABLE IF NOT EXISTS)
+echo   * Create indexes if they don't exist (CREATE INDEX IF NOT EXISTS)
+echo   * Verify database connectivity
+echo   * Will NOT delete existing data
+echo.
+set /p CONFIRM="Do you want to continue with the database update? (y/N): "
+if /i not "%CONFIRM%"=="y" (
+    echo.
+    echo [INFO] Operation cancelled by user
+    pause
+    exit /b 0
+)
 echo.
 
 REM Check AWS credentials
@@ -49,10 +79,12 @@ echo [INFO] Verifying Lambda function exists...
 aws lambda get-function --function-name %FUNCTION_NAME% >nul 2>&1
 if !errorlevel! neq 0 (
     echo [ERROR] Lambda function does not exist: %FUNCTION_NAME%
-    echo [ERROR] Please deploy the InitDB stack first
+    echo [ERROR] Please deploy the main stack first
     echo.
-    echo [INFO] To deploy InitDB, run:
-    echo   aws cloudformation deploy --template-file infra/templates/initdb.yml --stack-name event-manager-initdb-%ENVIRONMENT% --capabilities CAPABILITY_NAMED_IAM --parameter-overrides Environment=%ENVIRONMENT%
+    echo [INFO] To deploy the complete stack (includes InitDB), run:
+    echo   scripts\deploy.bat
+    echo.
+    echo [INFO] Note: InitDB is now deployed automatically as part of the main stack
     pause
     exit /b 1
 )
@@ -141,19 +173,41 @@ if exist %RESPONSE_FILE% del %RESPONSE_FILE%
 if exist %TEMP%\logs.txt del %TEMP%\logs.txt
 
 REM ============================================
-REM Verification Instructions
+REM Get Database Information
 REM ============================================
 echo.
-echo [INFO] To verify the tables created, you can connect to the database:
+echo [INFO] Getting database information...
+
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager --query "Stacks[0].Outputs[?OutputKey==`DBEndpoint`].OutputValue" --output text 2^>nul') do set DB_ENDPOINT=%%i
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name event-manager --query "Stacks[0].Outputs[?OutputKey==`DBSecretArn`].OutputValue" --output text 2^>nul') do set SECRET_ARN=%%i
+
+if not "%DB_ENDPOINT%"=="" (
+    echo [SUCCESS] Database Endpoint: %DB_ENDPOINT%
+)
+if not "%SECRET_ARN%"=="" (
+    echo [SUCCESS] Secret ARN: %SECRET_ARN%
+)
+
 echo.
-echo   # Get credentials from Secrets Manager
-echo   aws secretsmanager get-secret-value --secret-id event-manager-rds-secret-%ENVIRONMENT%
+echo ===============================================================
+echo   USEFUL COMMANDS TO VERIFY DATABASE
+echo ===============================================================
 echo.
-echo   # Connect to MySQL
-echo   mysql -h ^<DB_ENDPOINT^> -u ^<USERNAME^> -p EventManagerDB
+echo 1. Get database credentials:
+echo    aws secretsmanager get-secret-value --secret-id %SECRET_ARN% --query SecretString --output text
 echo.
-echo   # List tables
-echo   SHOW TABLES;
+echo 2. Connect to MySQL (requires mysql client):
+echo    mysql -h %DB_ENDPOINT% -u ^<USERNAME^> -p EventManagerDB
+echo.
+echo 3. Useful SQL commands:
+echo    SHOW TABLES;                                    # List all tables
+echo    DESCRIBE events;                                # View events table structure
+echo    SHOW INDEX FROM events;                         # View events table indexes
+echo    SELECT COUNT(*) FROM events;                    # Count events
+echo    SELECT * FROM events ORDER BY created_at DESC LIMIT 5;  # View latest events
+echo.
+echo 4. Run this script again to update structure:
+echo    scripts\run-init-db.bat %ENVIRONMENT%
 echo.
 
 REM ============================================
@@ -168,12 +222,17 @@ if "%STATUS_CODE%"=="200" (
     echo [SUCCESS] Database model updated successfully
     echo.
     echo [INFO] Tables created/updated:
-    echo   - users
-    echo   - events
-    echo   - event_assistance
-    echo   - report
+    echo    * report           - Event reports
+    echo    * events           - System events
+    echo    * event_assistance - Event attendance
     echo.
-    echo [INFO] Indexes created for query optimization
+    echo [INFO] Indexes created for optimization:
+    echo    * idx_status       - Search by event status
+    echo    * idx_start_date   - Sort by date
+    echo    * idx_created_at   - Sort by creation
+    echo    * idx_assistance_* - Attendance query optimization
+    echo.
+    echo [INFO] Database structure is ready to use
     echo.
 ) else (
     echo.
@@ -183,6 +242,15 @@ if "%STATUS_CODE%"=="200" (
     echo.
     echo [ERROR] Could not update database model
     echo [INFO] Review the logs above for more details
+    echo.
+    echo [INFO] Possible causes:
+    echo    * Incorrect database credentials
+    echo    * Database not accessible from Lambda
+    echo    * Security group blocking connection
+    echo    * Connection timeout
+    echo.
+    echo [INFO] For debugging, check CloudWatch logs:
+    echo    aws logs tail /aws/lambda/InitDBLambda-%ENVIRONMENT% --follow
     echo.
 )
 

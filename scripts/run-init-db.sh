@@ -2,6 +2,20 @@
 
 # 🗄️ Script para Ejecutar InitDB - Event Manager AWS
 # Este script ejecuta la función Lambda InitDB para crear/actualizar el modelo de base de datos
+#
+# USO:
+#   ./scripts/run-init-db.sh [environment]
+#
+# PROPÓSITO:
+#   - Crear tablas de base de datos si no existen
+#   - Actualizar estructura de tablas (ALTER TABLE con IF NOT EXISTS)
+#   - Crear/actualizar índices para optimización
+#   - Verificar conectividad de base de datos
+#
+# CASOS DE USO:
+#   1. Primera vez: Crea todas las tablas e índices
+#   2. Actualización: Ejecuta cambios de esquema sin perder datos
+#   3. Verificación: Prueba conectividad y estado de la base de datos
 
 set -e  # Salir si cualquier comando falla
 
@@ -10,14 +24,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/utils.sh"
 
 # Configuración por defecto
-ENVIRONMENT=${ENVIRONMENT:-dev}
+ENVIRONMENT=${1:-${ENVIRONMENT:-dev}}
 AWS_REGION=${AWS_REGION:-us-west-2}
 
-show_banner "RUN INIT DB" "Event Manager AWS"
+show_banner "RUN INIT DB" "Database Structure Update"
 
 log_info "Configuración:"
 log_info "  - Environment: $ENVIRONMENT"
 log_info "  - AWS Region: $AWS_REGION"
+echo ""
+
+log_warning "⚠️  IMPORTANTE: Este script ejecutará cambios en la base de datos"
+log_info "Este script realizará las siguientes operaciones:"
+echo "  ✓ Crear tablas si no existen (CREATE TABLE IF NOT EXISTS)"
+echo "  ✓ Crear índices si no existen (CREATE INDEX IF NOT EXISTS)"
+echo "  ✓ Verificar conectividad de base de datos"
+echo "  ✓ NO eliminará datos existentes"
+echo ""
+
+# Confirmación del usuario
+if ! confirm_action "¿Deseas continuar con la actualización de la base de datos?"; then
+    log_info "Operación cancelada por el usuario"
+    exit 0
+fi
+
+echo ""
 
 # Verificaciones previas
 log_info "Verificando credenciales AWS..."
@@ -31,10 +62,12 @@ FUNCTION_NAME="InitDBLambda-${ENVIRONMENT}"
 log_info "Verificando que la función Lambda existe..."
 if ! aws lambda get-function --function-name "$FUNCTION_NAME" >/dev/null 2>&1; then
     log_error "La función Lambda no existe: $FUNCTION_NAME"
-    log_error "Por favor, despliega el stack InitDB primero"
+    log_error "Por favor, despliega el stack principal primero"
     echo ""
-    log_info "Para desplegar InitDB, ejecuta:"
-    echo "  aws cloudformation deploy --template-file infra/templates/initdb.yml --stack-name event-manager-initdb-$ENVIRONMENT --capabilities CAPABILITY_NAMED_IAM --parameter-overrides Environment=$ENVIRONMENT"
+    log_info "Para desplegar el stack completo (incluye InitDB), ejecuta:"
+    echo "  ./scripts/deploy.sh"
+    echo ""
+    log_info "Nota: InitDB ahora se despliega automáticamente como parte del stack principal"
     exit 1
 fi
 
@@ -113,39 +146,86 @@ fi
 # Limpiar archivo temporal
 rm -f "$RESPONSE_FILE"
 
-# PASO 4: Verificar tablas creadas (opcional)
+# PASO 4: Obtener información de la base de datos
 echo ""
-log_info "Para verificar las tablas creadas, puedes conectarte a la base de datos:"
+log_info "Obteniendo información de la base de datos..."
+
+# Obtener endpoint de la base de datos
+DB_ENDPOINT=$(aws cloudformation describe-stacks \
+    --stack-name event-manager \
+    --query 'Stacks[0].Outputs[?OutputKey==`DBEndpoint`].OutputValue' \
+    --output text 2>/dev/null || echo "")
+
+if [[ -n "$DB_ENDPOINT" ]]; then
+    log_success "Database Endpoint: $DB_ENDPOINT"
+fi
+
+# Obtener ARN del secreto
+SECRET_ARN=$(aws cloudformation describe-stacks \
+    --stack-name event-manager \
+    --query 'Stacks[0].Outputs[?OutputKey==`DBSecretArn`].OutputValue' \
+    --output text 2>/dev/null || echo "")
+
+if [[ -n "$SECRET_ARN" ]]; then
+    log_success "Secret ARN: $SECRET_ARN"
+fi
+
 echo ""
-echo "  # Obtener credenciales de Secrets Manager"
-echo "  aws secretsmanager get-secret-value --secret-id event-manager-rds-secret-$ENVIRONMENT"
+log_info "═══════════════════════════════════════════════════════════"
+log_info "  COMANDOS ÚTILES PARA VERIFICAR LA BASE DE DATOS"
+log_info "═══════════════════════════════════════════════════════════"
 echo ""
-echo "  # Conectarse a MySQL"
-echo "  mysql -h <DB_ENDPOINT> -u <USERNAME> -p EventManagerDB"
+echo "1️⃣  Obtener credenciales de la base de datos:"
+echo "   aws secretsmanager get-secret-value --secret-id $SECRET_ARN --query SecretString --output text | jq ."
 echo ""
-echo "  # Listar tablas"
-echo "  SHOW TABLES;"
+echo "2️⃣  Conectarse a MySQL (requiere mysql client):"
+echo "   mysql -h $DB_ENDPOINT -u <USERNAME> -p EventManagerDB"
+echo ""
+echo "3️⃣  Comandos SQL útiles:"
+echo "   SHOW TABLES;                                    # Listar todas las tablas"
+echo "   DESCRIBE events;                                # Ver estructura de tabla events"
+echo "   SHOW INDEX FROM events;                         # Ver índices de tabla events"
+echo "   SELECT COUNT(*) FROM events;                    # Contar eventos"
+echo "   SELECT * FROM events ORDER BY created_at DESC LIMIT 5;  # Ver últimos eventos"
+echo ""
+echo "4️⃣  Ejecutar este script nuevamente para actualizar estructura:"
+echo "   ./scripts/run-init-db.sh $ENVIRONMENT"
 echo ""
 
 # Resumen final
 if [[ "$STATUS_CODE" == "200" ]]; then
     show_banner "INIT DB COMPLETADO" "✅ Éxito"
     echo ""
-    log_success "Modelo de base de datos actualizado correctamente"
-    log_info "Tablas creadas/actualizadas:"
-    echo "  - users"
-    echo "  - events"
-    echo "  - event_assistance"
-    echo "  - report"
+    log_success "✅ Modelo de base de datos actualizado correctamente"
     echo ""
-    log_info "Índices creados para optimizar consultas"
+    log_info "📋 Tablas creadas/actualizadas:"
+    echo "   • report           - Reportes de eventos"
+    echo "   • events           - Eventos del sistema"
+    echo "   • event_assistance - Asistencia a eventos"
+    echo ""
+    log_info "🚀 Índices creados para optimización:"
+    echo "   • idx_status       - Búsqueda por estado de evento"
+    echo "   • idx_start_date   - Ordenamiento por fecha"
+    echo "   • idx_created_at   - Ordenamiento por creación"
+    echo "   • idx_assistance_* - Optimización de consultas de asistencia"
+    echo ""
+    log_info "💡 La estructura de base de datos está lista para usar"
     echo ""
     exit 0
 else
     show_banner "INIT DB FALLÓ" "❌ Error"
     echo ""
-    log_error "No se pudo actualizar el modelo de base de datos"
+    log_error "❌ No se pudo actualizar el modelo de base de datos"
     log_info "Revisa los logs arriba para más detalles"
+    echo ""
+    log_info "Posibles causas:"
+    echo "  • Credenciales de base de datos incorrectas"
+    echo "  • Base de datos no accesible desde Lambda"
+    echo "  • Security group bloqueando conexión"
+    echo "  • Timeout de conexión"
+    echo ""
+    log_info "Para debugging, revisa los logs de CloudWatch:"
+    echo "  aws logs tail /aws/lambda/InitDBLambda-$ENVIRONMENT --follow"
     echo ""
     exit 1
 fi
