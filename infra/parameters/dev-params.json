@@ -16,6 +16,14 @@
     "ParameterValue": "lambda-functions.zip"
   },
   {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-05032714e61b08bc1"
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-009ef7a7707886be5,subnet-0e2e79089e6edb302"
+  },
+  {
     "ParameterKey": "CreateS3Buckets",
     "ParameterValue": "false"
   },
@@ -26,5 +34,17 @@
   {
     "ParameterKey": "ExistingReportsBucket",
     "ParameterValue": "event-manager-reports-dev-617632154921"
+  },
+  {
+    "ParameterKey": "CreateSESResources",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "ExistingSESConfigurationSet",
+    "ParameterValue": "event-manager-config-set-dev"
+  },
+  {
+    "ParameterKey": "ExistingDBSecretArn",
+    "ParameterValue": ""
   }
 ]

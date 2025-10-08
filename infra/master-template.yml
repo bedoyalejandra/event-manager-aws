@@ -22,6 +22,14 @@ Parameters:
     Type: String
     Description: S3 bucket containing Lambda code (created automatically)
 
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for RDS deployment (use default VPC if no custom VPC exists)
+  
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: At least 2 subnet IDs in different AZs for RDS deployment
+
   # Resource validation parameters
   CreateS3Buckets:
     Type: String
@@ -50,18 +58,27 @@ Parameters:
     Type: String
     Default: ""
     Description: Name of existing SES configuration set (required if CreateSESResources=false)
-
-  DBEndpoint:
+  
+  ExistingDBSecretArn:
     Type: String
     Default: ""
-    Description: RDS database endpoint (created automatically by deploy script)
-
-  RDSSecretArn:
-    Type: String
-    Default: ""
-    Description: ARN of the Secrets Manager secret with database credentials
+    Description: ARN of existing database secret (leave empty to create new)
 
 Resources:
+  # ===========================================
+  # RDS Stack - MySQL Database
+  # ===========================================
+  RDSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/rds.yml'
+      Parameters:
+        Environment: !Ref Environment
+        VpcId: !Ref VpcId
+        SubnetIds: !Join [',', !Ref SubnetIds]
+        DBUsername: !Ref DBUsername
+        ExistingSecretArn: !Ref ExistingDBSecretArn
+
   # ===========================================
   # S3 Stack - Buckets para reportes
   # ===========================================
@@ -98,16 +115,31 @@ Resources:
         ExistingSESConfigurationSet: !Ref ExistingSESConfigurationSet
 
   # ===========================================
+  # InitDB Stack - Database Initialization
+  # ===========================================
+  InitDBStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [RDSStack, S3Stack]
+    Properties:
+      TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/initdb.yml'
+      Parameters:
+        RDSSecretArn: !GetAtt RDSStack.Outputs.DBSecretArn
+        RDSClusterEndpoint: !GetAtt RDSStack.Outputs.DBEndpoint
+        LambdaCodeBucket: !Ref S3LambdaBucket
+        LambdaCodeKey: !Ref LambdaCodeKey
+        Environment: !Ref Environment
+
+  # ===========================================
   # Lambda Functions Stack - Todas las funciones
   # ===========================================
   LambdasStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: [S3Stack, SQSSesStack]
+    DependsOn: [RDSStack, S3Stack, SQSSesStack, InitDBStack]
     Properties:
       TemplateURL: !Sub 'https://${S3LambdaBucket}.s3.${AWS::Region}.amazonaws.com/templates/lambdas.yml'
       Parameters:
-        RDSSecretArn: !Ref RDSSecretArn
-        RDSClusterEndpoint: !Ref DBEndpoint
+        RDSSecretArn: !GetAtt RDSStack.Outputs.DBSecretArn
+        RDSClusterEndpoint: !GetAtt RDSStack.Outputs.DBEndpoint
         LambdaCodeBucket: !Ref S3LambdaBucket
         LambdaCodeKey: !Ref LambdaCodeKey
         ReportsBucket: !GetAtt S3Stack.Outputs.ReportsBucketName
@@ -203,3 +235,15 @@ Outputs:
     Value: !GetAtt EventBridgeStack.Outputs.EventBusArn
     Export:
       Name: !Sub "${AWS::StackName}-EventBusArn"
+
+  DBEndpoint:
+    Description: RDS Database Endpoint
+    Value: !GetAtt RDSStack.Outputs.DBEndpoint
+    Export:
+      Name: !Sub "${AWS::StackName}-DBEndpoint"
+
+  DBSecretArn:
+    Description: Database Credentials Secret ARN
+    Value: !GetAtt RDSStack.Outputs.DBSecretArn
+    Export:
+      Name: !Sub "${AWS::StackName}-DBSecretArn"

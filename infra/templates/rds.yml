@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: RDS MySQL Database for Event Manager
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+    Description: Environment name (dev or prod)
+  
+  VpcId:
+    Type: String
+    Description: VPC ID for RDS deployment
+  
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Subnet IDs for RDS (at least 2 in different AZs)
+  
+  DBUsername:
+    Type: String
+    Default: event_admin
+    Description: Database master username
+    MinLength: 1
+    MaxLength: 16
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9_]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters and underscores
+  
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues:
+      - db.t3.micro
+      - db.t3.small
+      - db.t3.medium
+    Description: Database instance class
+  
+  AllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+    Description: Allocated storage in GB
+  
+  DBName:
+    Type: String
+    Default: EventManagerDB
+    Description: Database name
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9_]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters and underscores
+  
+  ExistingSecretArn:
+    Type: String
+    Default: ""
+    Description: ARN of existing Secrets Manager secret (leave empty to create new)
+
+Conditions:
+  CreateNewSecret: !Equals [!Ref ExistingSecretArn, ""]
+
+Resources:
+  # ===========================================
+  # Security Group for RDS
+  # ===========================================
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub event-manager-rds-sg-${Environment}
+      GroupDescription: Security group for Event Manager RDS instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+          Description: Allow MySQL access from anywhere (Lambda functions outside VPC)
+      Tags:
+        - Key: Name
+          Value: !Sub event-manager-rds-sg-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ===========================================
+  # DB Subnet Group
+  # ===========================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub event-manager-db-subnet-group-${Environment}
+      DBSubnetGroupDescription: Subnet group for Event Manager RDS
+      SubnetIds: !Ref SubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub event-manager-db-subnet-group-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ===========================================
+  # Secrets Manager - Database Credentials
+  # ===========================================
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: CreateNewSecret
+    Properties:
+      Name: !Sub event-app/db-credentials-${Environment}-${AWS::AccountId}
+      Description: Credentials for Event Manager database
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username": "${DBUsername}"}'
+        GenerateStringKey: password
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+        RequireEachIncludedType: true
+      Tags:
+        - Key: Name
+          Value: !Sub event-manager-db-secret-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ===========================================
+  # RDS MySQL Instance
+  # ===========================================
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    DependsOn: [DBSecurityGroup, DBSubnetGroup]
+    Properties:
+      DBInstanceIdentifier: !Sub event-manager-db-${Environment}
+      DBName: !Ref DBName
+      Engine: mysql
+      EngineVersion: '8.0.43'
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref AllocatedStorage
+      StorageType: gp2
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !If
+        - CreateNewSecret
+        - !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:password}}'
+        - !Sub '{{resolve:secretsmanager:${ExistingSecretArn}:SecretString:password}}'
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      PubliclyAccessible: true
+      MultiAZ: false
+      BackupRetentionPeriod: 0
+      StorageEncrypted: false
+      EnableCloudwatchLogsExports:
+        - error
+        - general
+        - slowquery
+      Tags:
+        - Key: Name
+          Value: !Sub event-manager-db-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+
+# ===========================================
+# Outputs
+# ===========================================
+Outputs:
+  DBInstanceIdentifier:
+    Description: RDS Instance Identifier
+    Value: !Ref DBInstance
+    Export:
+      Name: !Sub "${AWS::StackName}-DBInstanceIdentifier"
+  
+  DBEndpoint:
+    Description: RDS Instance Endpoint Address
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-DBEndpoint"
+  
+  DBPort:
+    Description: RDS Instance Port
+    Value: !GetAtt DBInstance.Endpoint.Port
+    Export:
+      Name: !Sub "${AWS::StackName}-DBPort"
+  
+  DBSecretArn:
+    Description: ARN of the Secrets Manager secret containing database credentials
+    Value: !If
+      - CreateNewSecret
+      - !Ref DBSecret
+      - !Ref ExistingSecretArn
+    Export:
+      Name: !Sub "${AWS::StackName}-DBSecretArn"
+  
+  DBName:
+    Description: Database Name
+    Value: !Ref DBName
+    Export:
+      Name: !Sub "${AWS::StackName}-DBName"

@@ -68,6 +68,15 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
+  # Custom Resource to automatically invoke InitDB Lambda
+  InitDBTrigger:
+    Type: Custom::InitDBTrigger
+    DependsOn: InitDBLambda
+    Properties:
+      ServiceToken: !GetAtt InitDBLambda.Arn
+      # This will trigger the Lambda automatically when the stack is created/updated
+      Timestamp: !Sub '${AWS::StackName}-${Environment}'
+
 Outputs:
   InitDBLambdaName:
     Description: Nombre de la Lambda de inicialización de la DB
@@ -76,3 +85,7 @@ Outputs:
   InitDBLambdaArn:
     Description: ARN de la Lambda de inicialización de la DB
     Value: !GetAtt InitDBLambda.Arn
+  
+  InitDBStatus:
+    Description: Estado de la inicialización de la base de datos
+    Value: !GetAtt InitDBTrigger.Message

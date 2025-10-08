@@ -1,8 +1,52 @@
 const mysql = require("mysql2/promise");
 const AWS = require("aws-sdk");
+const https = require("https");
+const url = require("url");
 const secretsManager = new AWS.SecretsManager();
 
-exports.handler = async (event) => {
+// Function to send response to CloudFormation
+async function sendResponse(event, context, responseStatus, responseData, physicalResourceId) {
+  const responseBody = JSON.stringify({
+    Status: responseStatus,
+    Reason: responseData.Message || "See CloudWatch logs for details",
+    PhysicalResourceId: physicalResourceId || context.logStreamName,
+    StackId: event.StackId,
+    RequestId: event.RequestId,
+    LogicalResourceId: event.LogicalResourceId,
+    Data: responseData,
+  });
+
+  console.log("Response body:", responseBody);
+
+  const parsedUrl = url.parse(event.ResponseURL);
+  const options = {
+    hostname: parsedUrl.hostname,
+    port: 443,
+    path: parsedUrl.path,
+    method: "PUT",
+    headers: {
+      "content-type": "",
+      "content-length": responseBody.length,
+    },
+  };
+
+  return new Promise((resolve, reject) => {
+    const request = https.request(options, (response) => {
+      console.log("Status code:", response.statusCode);
+      resolve();
+    });
+
+    request.on("error", (error) => {
+      console.error("sendResponse Error:", error);
+      reject(error);
+    });
+
+    request.write(responseBody);
+    request.end();
+  });
+}
+
+async function initializeDatabase() {
   let connection;
   try {
     console.log("Starting database initialization...");
@@ -155,24 +199,15 @@ exports.handler = async (event) => {
     );
 
     return {
-      statusCode: 200,
-      body: JSON.stringify({
-        message: "Database initialized successfully",
-        tablesCreated: ["users", "events", "event_assistance"],
-        indexesCreated: 8,
-        currentEventsCount: rows[0].count,
-      }),
+      success: true,
+      message: "Database initialized successfully",
+      tablesCreated: ["report", "events", "event_assistance"],
+      indexesCreated: 8,
+      currentEventsCount: rows[0].count,
     };
   } catch (err) {
     console.error("❌ Error initializing database:", err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: "Database initialization failed",
-        message: err.message,
-        code: err.code || "UNKNOWN_ERROR",
-      }),
-    };
+    throw err;
   } finally {
     if (connection) {
       try {
@@ -181,6 +216,55 @@ exports.handler = async (event) => {
       } catch (closeErr) {
         console.error("Error closing database connection:", closeErr);
       }
+    }
+  }
+}
+
+exports.handler = async (event, context) => {
+  console.log("Received event:", JSON.stringify(event, null, 2));
+
+  // Check if this is a CloudFormation Custom Resource request
+  if (event.RequestType) {
+    try {
+      // Only initialize on Create and Update, not on Delete
+      if (event.RequestType === "Create" || event.RequestType === "Update") {
+        const result = await initializeDatabase();
+        await sendResponse(event, context, "SUCCESS", {
+          Message: result.message,
+          TablesCreated: result.tablesCreated.join(", "),
+          IndexesCreated: result.indexesCreated,
+          EventsCount: result.currentEventsCount,
+        });
+      } else if (event.RequestType === "Delete") {
+        // On delete, just acknowledge - don't drop tables
+        await sendResponse(event, context, "SUCCESS", {
+          Message: "Database tables retained (not deleted)",
+        });
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      await sendResponse(event, context, "FAILED", {
+        Message: err.message || "Database initialization failed",
+      });
+    }
+  } else {
+    // Direct Lambda invocation (not from CloudFormation)
+    try {
+      const result = await initializeDatabase();
+      return {
+        statusCode: 200,
+        body: JSON.stringify(result),
+      };
+    } catch (err) {
+      console.error("Error:", err);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: "Database initialization failed",
+          message: err.message,
+          code: err.code || "UNKNOWN_ERROR",
+        }),
+      };
     }
   }
 };
