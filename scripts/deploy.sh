@@ -184,6 +184,14 @@ log_warning "Este paso puede tomar 15-20 minutos. Por favor, sé paciente..."
 log_info "Desplegando stack principal con todos los servicios..."
 log_info "RDS, InitDB y todas las funciones Lambda serán desplegadas automáticamente"
 
+# Obtener VPC ID y Subnets automáticamente
+log_info "Obteniendo información de VPC y Subnets..."
+VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query 'Vpcs[0].VpcId' --output text)
+SUBNET_IDS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0:2].SubnetId' --output text | tr '\t' ',')
+
+log_info "VPC ID: $VPC_ID"
+log_info "Subnet IDs: $SUBNET_IDS"
+
 aws cloudformation deploy \
     --template-file infra/master-template.yml \
     --stack-name event-manager \
@@ -193,6 +201,8 @@ aws cloudformation deploy \
         DBUsername=$DB_USERNAME \
         S3LambdaBucket=$LAMBDA_BUCKET_NAME \
         LambdaCodeKey=lambda-functions.zip \
+        VpcId=$VPC_ID \
+        SubnetIds=$SUBNET_IDS \
         CreateS3Buckets=false \
         ExistingLambdaCodeBucket=$LAMBDA_BUCKET_NAME \
         ExistingReportsBucket=$REPORTS_BUCKET_NAME \

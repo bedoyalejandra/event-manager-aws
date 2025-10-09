@@ -222,7 +222,7 @@ echo.
 echo [WARNING] This step may take 15-20 minutes. Please be patient...
 echo [INFO] Deploying main stack with RDS, InitDB, and all Lambda functions...
 echo.
-aws cloudformation deploy --template-file infra/master-template.yml --stack-name event-manager --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides Environment=%ENVIRONMENT% DBUsername=%DB_USERNAME% S3LambdaBucket=%LAMBDA_BUCKET_NAME% LambdaCodeKey=lambda-functions.zip VpcId=%VPC_ID% SubnetIds=%SUBNET_IDS% CreateS3Buckets=false ExistingLambdaCodeBucket=%LAMBDA_BUCKET_NAME% ExistingReportsBucket=%REPORTS_BUCKET_NAME% CreateSESResources=false ExistingDBSecretArn=""
+aws cloudformation deploy --template-file infra/master-template.yml --stack-name event-manager --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides Environment=%ENVIRONMENT% DBUsername=%DB_USERNAME% S3LambdaBucket=%LAMBDA_BUCKET_NAME% LambdaCodeKey=lambda-functions.zip VpcId=%VPC_ID% SubnetIds=%SUBNET_IDS% CreateS3Buckets=false ExistingLambdaCodeBucket=%LAMBDA_BUCKET_NAME% ExistingReportsBucket=%REPORTS_BUCKET_NAME% CreateSESResources=false ExistingSESConfigurationSet=event-manager-config-set-%ENVIRONMENT% ExistingDBSecretArn=""
 if !errorlevel! neq 0 (
     echo [ERROR] Main stack deployment failed
     pause
