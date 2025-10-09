@@ -30,12 +30,7 @@ Parameters:
   SchedulerRoleArn:
     Type: String
     Default: ""
-    Description: EventBridge Scheduler Role ARN (optional)  
-  ReportQueueName:
-    Type: String
-    Default: !Sub "event-manager-report-queue-${Environment}"
-    Description: SQS queue name for report processing
-
+    Description: EventBridge Scheduler Role ARN (optional)
 
 Resources:
   # Lambda Execution Role
@@ -77,15 +72,6 @@ Resources:
                 Condition:
                   StringEquals:
                     iam:PassedToService: scheduler.amazonaws.com
-
-  
-  ReportQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: !Ref ReportQueueName
-        VisibilityTimeout: 120
-        MessageRetentionPeriod: 345600
-
 
   # 1. Create Event Lambda
   CreateEventLambda:
@@ -250,7 +236,6 @@ Resources:
           DB_NAME: EventManagerDB
           REPORTS_BUCKET: !Ref ReportsBucket
           ENVIRONMENT: !Ref Environment
-          DB_HOST: !Ref RDSClusterEndpoint
       Role: !GetAtt LambdaExecutionRole.Arn
 
   # 9. Send Email Lambda
@@ -339,7 +324,7 @@ Resources:
     Properties:
       FunctionName: !Sub "PostReportLambda-${Environment}"
       Runtime: nodejs18.x
-      Handler: generate-report/index.handler
+      Handler: post-report/index.handler
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: !Ref LambdaCodeKey
@@ -352,7 +337,6 @@ Resources:
           DB_HOST: !Ref RDSClusterEndpoint
           EMAIL_QUEUE: !Ref EmailQueue
           ENVIRONMENT: !Ref Environment
-          REPORT_QUEUE_URL: !Ref ReportQueue
       Role: !GetAtt LambdaExecutionRole.Arn
 
   # SQS Event Source Mapping for SendEmail Lambda
@@ -366,31 +350,13 @@ Resources:
       MaximumBatchingWindowInSeconds: 5
 
 
-# --- Permiso de disparo SQS -> Lambda (Event Source Mapping) ---
-  ReportQueueEventSourceMapping:
-    Type: AWS::Lambda::EventSourceMapping
-    Properties:
-      EventSourceArn: !GetAtt ReportQueue.Arn
-      FunctionName: !Ref ProcessReportDataLambda
-      BatchSize: 1
-      MaximumBatchingWindowInSeconds: 60  # ~desencolar hasta 1 mensaje/60s
-      Enabled: true
-
-
 Outputs:
   # Lambda Function ARNs
   CreateEventLambdaArn:
     Description: ARN of the Create Event Lambda function
     Value: !GetAtt CreateEventLambda.Arn
     Export:
-      Name: !Sub "${AWS::StackName}-CreateEventLambdaArn"  
-
-  ReportQueueUrl:
-    Description: URL of the report SQS queue
-    Value: !Ref ReportQueue
-    Export:
-      Name: !Sub "${AWS::StackName}-ReportQueueUrl"
-
+      Name: !Sub "${AWS::StackName}-CreateEventLambdaArn"
 
   DeleteEventLambdaArn:
     Description: ARN of the Delete Event Lambda function
@@ -467,22 +433,6 @@ Outputs:
       Name: !Sub "${AWS::StackName}-CreateTaskLambdaArn"
 
   # Lambda Function Names
-
-# --- Añadir a Parameters si quieres parametrizar la cola de reportes ---
-  ReportQueueName:
-    Type: String
-    Default: !Sub "event-manager-report-queue-${Environment}"
-    Description: SQS queue name for report processing
-
-# --- Recurso SQS de reportes ---
-  ReportQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Ref ReportQueueName
-      VisibilityTimeout: 120           # Debe ser > timeout de la Lambda consumidora
-      MessageRetentionPeriod: 345600   # 4 días
-    
-
   CreateEventLambdaName:
     Description: Name of the Create Event Lambda function
     Value: !Ref CreateEventLambda
